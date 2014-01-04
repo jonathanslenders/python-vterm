@@ -12,6 +12,7 @@ import array
 import termios
 import time
 import select
+import logging
 
 from std import raw_mode
 
@@ -32,6 +33,7 @@ sys.stdout.write('\033[?1049h')
 loop = asyncio.get_event_loop()
 
 logfile = open('/tmp/pymux-log', 'w')
+logging.basicConfig(stream=logfile, level=logging.DEBUG)
 
 def log(msg, *a):
 	logfile.write(msg % a + '\n')
@@ -154,6 +156,7 @@ class Pane:
 		# Slave side -> attached to process.
 		self.slave_stdin = io.open(self.slave, 'rb', 0)
 		self.slave_stdout = io.open(self.slave, 'wb', 0)
+		set_size(self.slave_stdin, self.sy, self.sx)
 
 		self.process = subprocess.Popen(command, stdin=self.slave_stdin,
 					stdout=self.slave_stdout, stderr=self.slave_stdout, bufsize=0)
