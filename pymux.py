@@ -235,6 +235,57 @@ class Pane:
 
 		return mask
 
+class Layout:
+	def __init__(self, window):
+		self.window = window
+		self.active_pane = None
+
+		self.root = None
+		self.active_split = None # Parent of active_pane
+
+	@property
+	def panes(self):
+		if isinstance(self.root, Split):
+			yield from self.root.panes
+		elif self.root is not None:
+			yield self.root
+
+	def add_pane(self, pane, split_method=VSplit):
+		if self.root is None:
+			self.root = pane
+		elif self.active_split is not None:
+			index = self.active_split.children.index(pane)
+
+			if isinstance(self.active_split, split_method):
+				self.active_split.insertat(pane, index)
+			else:
+				# Create child of active_split, splitting in the other
+				# direction.
+				split = split_method()
+				self.active_split[pos
+
+
+		elif isinstance(self.root, Split):
+			self.layout_root.panes.append(pane)
+		else:
+			hsplit = HSplit()
+			hsplit.panes = [ self.layout_root, pane ]
+			self.layout_root = hsplit
+
+		self.active_pane = pane
+
+class Split:
+	def __init__(self):
+		self.children = []
+
+
+class VSplit(Split):
+	pass
+
+
+class HSplit(Split):
+	pass
+
 
 class Window:
 	def __init__(self):
@@ -242,6 +293,9 @@ class Window:
 		self.active_pane = None
 		self.sx = 80
 		self.sy = 24
+
+		# Root of layout
+		self.layout = Layout(self) # TODO: weakref
 
 		# Invalidate state
 		self._invalidated = False
@@ -344,14 +398,20 @@ class Window:
 
 		return mask, is_active
 
+	def resize_panes(self):
+		if
+
 	@asyncio.coroutine
 	def run_pane(self, pane):
 		""" Run pane inside this window.
-		Returns when the process is finished.  """
+		Returns when the process is finished. """
 		# Add pane
 		self.panes.append(pane)
 		if not self.active_pane:
 			self.active_pane = pane
+
+		# Add to layout.
+		self.layout.add_pane(pane)
 
 		# Run it
 		yield from pane.start()
@@ -364,6 +424,8 @@ class Window:
 				self.active_pane = self.panes[0]
 			else:
 				self.active_pane = None
+
+		# TODO: remove from layout.
 
 		# Reschedule redraw
 		self.invalidate()
@@ -403,6 +465,12 @@ class Client:
 
 				elif c2 == b'n':
 					self.window.focus_next()
+
+				elif c2 == b'|':
+					self.window.split_vertical() #TODO
+
+				elif c2 == b'%':
+					self.window.split_horizontal() #TODO
 			else:
 				self.window.write_input(char)
 
