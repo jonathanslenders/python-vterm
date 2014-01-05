@@ -15,98 +15,123 @@ import select
 
 from std import raw_mode
 
+class SubProcessProtocol(asyncio.protocols.SubprocessProtocol):
+	def __init__(self, pane):
+		self.transport = None
+		self.pane = pane
+
+	def connection_made(self, transport):
+		self.transport = transport
+
+	def data_received(self, data):
+		self.pane.write(data.decode('utf-8'))
+
+
+class Pane:
+	def __init__(self, command='/usr/bin/vim'):
+		self._repaint_scheduled = False
+
+		# Create output stream.
+		self.screen = pyte.Screen(80, 24)
+
+		self.stream = pyte.Stream()
+		self.stream.attach(self.screen)
+
+		# Create pseudo terminal for this pane.
+		self.master, self.slave = os.openpty()
+
+		# Master side -> attached to terminal emulator.
+		self.shell_in = io.open(self.master, 'wb', 0)
+		self.shell_out = io.open(self.master, 'rb', 0)
+
+		# Slave side -> attached to process.
+		self.slave_stdin = io.open(self.slave, 'rb', 0)
+		self.slave_stdout = io.open(self.slave, 'wb', 0)
+
+		self.process = subprocess.Popen(command, stdin=self.slave_stdin,
+					stdout=self.slave_stdout, stderr=self.slave_stdout, bufsize=0)
+
+
+	@asyncio.coroutine
+	def start_reader(self):
+		read_transport, read_protocol = yield from loop.connect_read_pipe(
+							lambda:SubProcessProtocol(self), self.shell_out)
+
+	def write(self, data):
+		""" Write data received from the application into the pane and rerender. """
+		self.stream.feed(data)
+
+		if not self._repaint_scheduled:
+			self._repaint_scheduled = True
+			loop.call_soon(self.repaint)
+
+	def repaint(self):
+		self._repaint_scheduled = False
+
+		data = []
+		write = data.append
+
+		# Display
+		write('\u001b[H')
+		write('\u001b[2J')
+		write('\033[0m'); write('─' * 80)
+		write('\r\n')
+		for lines in self.screen:
+			write('\033[0m'); write('│')
+			for char in lines:
+				write('\033[0m')
+
+				if char.fg != 'default':
+					colour_code = reverse_colour_code[char.fg]
+					write('\033[0;%im' % colour_code)
+
+				if char.bg != 'default':
+					colour_code = reverse_bgcolour_code[char.bg]
+					write('\033[%im' % colour_code)
+
+				if char.bold:
+					write('\033[1m')
+
+				if char.underscore:
+					write('\033[4m')
+
+				if char.reverse:
+					write('\033[7m')
+
+				write(char.data)
+			write('\033[0m'); write('│\r\n')
+		write('\033[0m'); write('─' * 80)
+
+		# Now move the cursor to the right position
+		write('\u001b[H')
+		write('\033[%i;%iH' % (self.screen.cursor.y+2, self.screen.cursor.x+2))
+		sys.stdout.write(''.join(data))
+		sys.stdout.flush()
+
+
 reverse_colour_code = dict((v,k) for k,v in pyte.graphics.FG.items())
 reverse_bgcolour_code = dict((v,k) for k,v in pyte.graphics.BG.items())
 
-stream = pyte.Stream()
-screen = pyte.Screen(80, 24)
-stream.attach(screen)
-
-master, slave = os.openpty()
-shell_in = io.open(master, 'wb', 0)
-shell_out = io.open(master, 'rb', 0)
-slave_stdin = io.open(slave, 'rb', 0)
-slave_stdout = io.open(slave, 'wb', 0)
-
 # Make sure stdin is unbuffered.
 sys.stdin = os.fdopen(sys.stdin.fileno(), 'rb', 0)
-log = open('/tmp/log', 'wb', 0)
 
+# Set terminal:
+# 1: Set cursor key to application
+# 0: ???
+# 4: Set smooth scrolling
+# 9: Set interlacing mode
 sys.stdout.write('\033[?1049h')
-
-repaint_scheduled = False
 
 loop = asyncio.get_event_loop()
 
-class InputProtocol:
-	def connection_made(self, transport):
-		self.transport = transport
-
-	def data_received(self, data):
-		for c in data:
-			shell_in.write(bytes((c,)))
-				#c = sys.stdin.read(100)
-				#shell_in.write(c)
-
-
-class SubProcessProtocol(asyncio.protocols.SubprocessProtocol):
-	def __init__(self):
-		self.transport = None
-
-	def connection_made(self, transport):
-		self.transport = transport
-
-	def data_received(self, data):
-		log.write(data)
-		stream.feed(data.decode('utf-8'))
-
-		global repaint_scheduled
-		if not repaint_scheduled:
-			loop.call_soon(repaint)
-
-def repaint():
-	global repaint_scheduled
-	repaint_scheduled = False
-
-	data = []
-	write = data.append
-
-	# Display
-	write('\u001b[H')
-	write('\u001b[2J')
-	write('\033[0m'); write('─' * 80)
-	write('\r\n')
-	for lines in screen:
-		write('\033[0m'); write('│')
-		for char in lines:
-			write('\033[0m')
-
-			if char.fg != 'default':
-				colour_code = reverse_colour_code[char.fg]
-				write('\033[0;%im' % colour_code)
-
-			if char.bg != 'default':
-				colour_code = reverse_bgcolour_code[char.bg]
-				write('\033[%im' % colour_code)
-
-			if char.bold:
-				write('\033[1m')
-
-			if char.underscore:
-				write('\033[4m')
-
-			if char.reverse:
-				write('\033[7m')
-
-			write(char.data)
-		write('\033[0m'); write('│\r\n')
-	write('\033[0m'); write('─' * 80)
-
-	# Now move the cursor to the right position
-	write('\u001b[H')
-	write('\033[%i;%iH' % (screen.cursor.y+2, screen.cursor.x+2))
-	sys.stdout.write(''.join(data))
-	sys.stdout.flush()
+#class InputProtocol:
+#	def connection_made(self, transport):
+#		self.transport = transport
+#
+#	def data_received(self, data):
+#		for c in data:
+#			shell_in.write(bytes((c,)))
+#	---> input_transport, input_protocol = yield from loop.connect_read_pipe(InputProtocol, sys.stdin)
 
 
 def get_size(stdout):
@@ -156,40 +181,35 @@ def sigwinch_handler(n, frame):
 	cols -= 3
 	screen.resize(rows, cols)
 	set_size(slave_stdin, rows, cols)
-	#loop.call_soon(set_size, slave_stdin, rows, cols)
 	loop.call_soon(os.kill, process.pid, signal.SIGWINCH) # XXX: not necessary??
-	#os.kill(process.pid, signal.SIGWINCH) # XXX: not necessary??
 
-signal.signal(signal.SIGWINCH, sigwinch_handler)
+# signal.signal(signal.SIGWINCH, sigwinch_handler)
 
-
-process = subprocess.Popen('/usr/bin/top', stdin=slave_stdin, stdout=slave_stdout, stderr=slave_stdout, bufsize=0)
 
 @asyncio.coroutine
 def run():
-	read_transport, read_protocol = yield from loop.connect_read_pipe(SubProcessProtocol, shell_out)
+	pane = Pane()
+	yield from pane.start_reader()
 
-#	input_transport, input_protocol = yield from loop.connect_read_pipe(InputProtocol, sys.stdin)
-
-		#tty.setraw(sys.stdin)
 	with raw_mode(sys.stdin):
 		is_running = True
 		def input_loop():
 			# Input loop executor.
-			while is_running: # TODO: use combination of select() and non blocking read here.
+			while is_running:
 				try:
 					r, w, e = select.select([sys.stdin], [], [], .4)
 					if sys.stdin in r:
 						c = sys.stdin.read(1)
-						shell_in.write(c)
+						pane.shell_in.write(c)
 				except Exception as e:
 					print (e)
 
 
-		f2 = loop.run_in_executor(None, input_loop)
-		yield from loop.run_in_executor(None, process.communicate)
-#		yield from f2
-	is_running = False
+		f1 = loop.run_in_executor(None, input_loop)
+		f2 = loop.run_in_executor(None, pane.process.communicate)
+		yield from f2
+		is_running = False
+		yield from f1
 
 loop.run_until_complete(run())
 sys.stdout.write('\033[?1049l')
