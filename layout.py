@@ -135,13 +135,13 @@ class Layout(Container):
 
     # Commands
 
-    def focus_next(self):
-        if self.active_pane:
-            panes = list(self.panes)
-            if panes:
-                try:
-                    index = panes.index(self.active_pane) + 1
-                except ValueError:
-                    index = 0
-                self.active_pane = panes[index % len(panes)]
-                #self.invalidate()
+#    def focus_next(self):
+#        if self.active_pane:
+#            panes = list(self.panes)
+#            if panes:
+#                try:
+#                    index = panes.index(self.active_pane) + 1
+#                except ValueError:
+#                    index = 0
+#                self.active_pane = panes[index % len(panes)]
+#                #self.invalidate()
