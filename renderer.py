@@ -5,46 +5,12 @@ import fcntl
 import pyte
 
 from log import logger
-from panes import Position, CellPosition
+from panes import Position, CellPosition, BorderType
 from invalidate import Redraw
 
 loop = asyncio.get_event_loop()
 
-class BorderType:
-    """ Position of a cell in a window. """
-    # Cross join
-    Join = Position.Left | Position.Top | Position.Bottom | Position.Right
 
-    BottomJoin = Position.Left | Position.Right | Position.Top
-    TopJoin = Position.Left | Position.Right | Position.Bottom
-    LeftJoin = Position.Right | Position.Top | Position.Bottom
-    RightJoin = Position.Left | Position.Top | Position.Bottom
-
-    # In the middle of a border
-    Horizontal = Position.Left | Position.Right
-    Vertical = Position.Bottom | Position.Top
-
-    BottomRight = Position.Left | Position.Top
-    TopRight = Position.Left | Position.Bottom
-    BottomLeft = Position.Right | Position.Top
-    TopLeft = Position.Right | Position.Bottom
-
-    NoBorder = 0
-
-
-CellPositionToBorderType = {
-    CellPosition.TopBorder: BorderType.Horizontal,
-    CellPosition.BottomBorder: BorderType.Horizontal,
-    CellPosition.LeftBorder: BorderType.Vertical,
-    CellPosition.RightBorder: BorderType.Vertical,
-
-    CellPosition.TopLeftBorder: BorderType.TopLeft,
-    CellPosition.TopRightBorder: BorderType.TopRight,
-    CellPosition.BottomLeftBorder: BorderType.BottomLeft,
-    CellPosition.BottomRightBorder: BorderType.BottomRight,
-
-    CellPosition.Outside: BorderType.NoBorder
-}
 
 BorderSymbols = {
     BorderType.Join: '┼',
@@ -62,6 +28,8 @@ BorderSymbols = {
     BorderType.TopRight: '┐',
     BorderType.BottomLeft: '└',
     BorderType.TopLeft: '┌',
+
+    BorderType.Outside: 'x',
 }
 
 reverse_colour_code = dict((v,k) for k,v in pyte.graphics.FG.items())
@@ -154,9 +122,11 @@ class Renderer:
 
             for x in range(0, self.client.layout.location.sx):
                 border_type, is_active = self._check_cell(x, y)
-                if border_type:
 
-                    write('\033[0m')
+                if border_type and border_type != BorderType.Inside:
+                    write('\033[%i;%iH' % (y+1, x+1)) # XXX: we don't have to send this every time. Optimize.
+                    write('\033[0m') # Reset colour
+
                     if is_active:
                         write('\033[0;%im' % 32)
 
@@ -168,10 +138,10 @@ class Renderer:
         data = []
         write = data.append
 
-        ###test = []
-        ###for idx, line in enumerate(pane.screen.display, 1):
-        ###    test.append("{0:2d} {1} ¶\n".format(idx, line))
-        ###log(''.join(test))
+        test = []
+        for idx, line in enumerate(pane.screen.display, 1):
+            test.append("{0:2d} {1} ¶\n".format(idx, line))
+        logger.info(''.join(test))
 
         for l in range(len(pane.screen)):
             if not only_dirty or l in pane.screen.dirty:
@@ -216,15 +186,18 @@ class Renderer:
         is_active = False
 
         for pane in self.client.panes:
-            cell_position = pane._check_cell(x, y)
+            border_type = pane._get_border_type(x, y)
 
             # If inside pane:
-            if cell_position == CellPosition.Inside:
-                return BorderType.NoBorder
+            if border_type == BorderType.Inside:
+                return border_type, False
+            assert CellPosition.Outside == 0
 
-            mask |= CellPositionToBorderType[cell_position]
+            mask |= border_type
 
-            is_active = is_active or (cell_position and pane == self.client.active_pane)
+            is_active = is_active or (border_type and pane == self.client.active_pane)
+
+        #border_type = CellPositionToBorderType[mask]
 
         return mask, is_active
 

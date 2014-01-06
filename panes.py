@@ -23,7 +23,7 @@ class Position:
 class CellPosition:
     """ Position of a cell according to a single pane. """
     Outside = 0
-    Inside = 100
+    Inside = 2048
 
     TopBorder = Position.Top
     RightBorder = Position.Right
@@ -33,6 +33,29 @@ class CellPosition:
     TopRightBorder = Position.Top | Position.Right
     BottomRightBorder = Position.Bottom | Position.Right
     BottomLeftBorder = Position.Bottom | Position.Left
+
+class BorderType:
+    """ Position of a cell in a window. """
+    Outside = 0
+    Inside = 2048
+
+    # Cross join
+    Join = Position.Left | Position.Top | Position.Bottom | Position.Right
+
+    BottomJoin = Position.Left | Position.Right | Position.Top
+    TopJoin = Position.Left | Position.Right | Position.Bottom
+    LeftJoin = Position.Right | Position.Top | Position.Bottom
+    RightJoin = Position.Left | Position.Top | Position.Bottom
+
+    # In the middle of a border
+    Horizontal = Position.Left | Position.Right
+    Vertical = Position.Bottom | Position.Top
+
+    BottomRight = Position.Left | Position.Top
+    TopRight = Position.Left | Position.Bottom
+    BottomLeft = Position.Right | Position.Top
+    TopLeft = Position.Right | Position.Bottom
+
 
 
 class SubProcessProtocol(asyncio.protocols.SubprocessProtocol):
@@ -92,7 +115,7 @@ class Pane(Container):
         """ Set position of pane in window. """
                 # TODO: The position should probably not be a property of the
                 #       pane itself.  A pane can appear in several windows.
-        #logger.info('set_position(px=%r, py=%r, sx=%r, sy=%r)' % (px, py, sx, sy))
+        logger.info('set_position(px=%r, py=%r, sx=%r, sy=%r)' % (location.px, location.py, location.sx, location.sy))
 
         self.px = location.px
         self.py = location.py
@@ -171,11 +194,31 @@ class Pane(Container):
     def cursor_position(self):
         return self.screen.cursor.y, self.screen.cursor.x
 
-    def _check_cell(self, x, y):
+    def _get_border_type(self, x, y):
+        return {
+            CellPosition.TopBorder: BorderType.Horizontal,
+            CellPosition.BottomBorder: BorderType.Horizontal,
+            CellPosition.LeftBorder: BorderType.Vertical,
+            CellPosition.RightBorder: BorderType.Vertical,
+
+            CellPosition.TopLeftBorder: BorderType.TopLeft,
+            CellPosition.TopRightBorder: BorderType.TopRight,
+            CellPosition.BottomLeftBorder: BorderType.BottomLeft,
+            CellPosition.BottomRightBorder: BorderType.BottomRight,
+
+            CellPosition.Inside: BorderType.Inside,
+            CellPosition.Outside: BorderType.Outside,
+        }[ self._get_cell_position(x,y) ]
+
+    def _get_cell_position(self, x, y):
         """ For a given (x,y) cell, return the CellPosition. """
         # If outside this pane, skip it.
-        if (x < self.px - 1 or x > self.px + self.sx or y < self.py - 1or y > self.py + self.sy):
+        if x < self.px - 1 or x > self.px + self.sx or y < self.py - 1 or y > self.py + self.sy:
             return CellPosition.Outside
+
+#        #  If inside, return that.
+#        if x >= self.px and x < self.px + self.sx and y >= self.py and y < self.py + self.sy:
+#            return CellPosition.Inside
 
         # Use bitmask for borders:
         mask = 0
@@ -193,3 +236,9 @@ class Pane(Container):
             mask |= Position.Right
 
         return mask
+
+        if mask:
+            return mask
+        else:
+            raise IMPOSSIBLE
+            #return CellPosition.Inside

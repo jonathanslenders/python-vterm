@@ -39,9 +39,9 @@ class Container:
         for c in self.children:
             c.set_location(self.location)
 
-    def add(self, child):
+    def add(self, child, replace_parent=False):
         """ Add child container. """
-        if child.parent is not None:
+        if child.parent is not None and not replace_parent:
             raise Exception('%r already has a parent: %r' % (child, child.parent))
 
         self.children.append(child)
@@ -67,23 +67,27 @@ class TileContainer(Container):
         super().__init__()
         self.children = []
 
-    def split(self, pane_container, horizontal=False, after_child=None):
+    def split(self, child, vsplit=False, after_child=None):
         """
-        Split and add pane_container.
+        Split and add child.
         """
         # Create split instance
-        split = HSplit() if horizontal else HSplit()
+        split = HSplit() if vsplit else VSplit()
 
         if after_child is None:
             index = 0
         else:
             assert after_child in self.children
 
-            index = self.children.find(after_child)
-            after_child._get_parent = lambda:None
-            split.add(after_child)
+            index = self.children.index(after_child)
+            split.add(after_child, replace_parent=True)
+            self.children[index] = split
 
-        split.add(pane_container)
+        split.add(child)
+
+        assert after_child.parent
+        assert child.parent
+        self.resize()
 
 
 class VSplit(TileContainer):
@@ -91,14 +95,13 @@ class VSplit(TileContainer):
     def resize(self):
         if self.location and self.children:
             # Reserve space for the borders.
-            available_space = self.location.sy - (len(self.children) - 1)
+            available_space = self.location.sy - len(self.children) + 1
 
             # Now device equally.
             sizes = divide_equally(available_space, len(self.children))
 
             offset = 0
             for c, size in zip(self.children, sizes):
-
                 c.set_location(Location(
                         self.location.px,
                         self.location.py + offset,
@@ -109,14 +112,24 @@ class VSplit(TileContainer):
 
 class HSplit(TileContainer):
     """ One pane at the top, one at the bottom. """
-    def __init__(self, sx, sy):
-        super().__init__(sx, sy)
-        self._split_pos = int((sy - 1) / 2) # We reserve one space for the border.
+    def resize(self):
+        if self.location and self.children:
+            # Reserve space for the borders.
+            available_space = self.location.sx - len(self.children) + 1
+            logger.info("available space: %s" % available_space)
 
-    @property
-    def widths(self):
-        return [ self.sx, self.sx ]
+            # Now device equally.
+            sizes = divide_equally(available_space, len(self.children))
+            logger.info("sizes: %s" % sizes)
 
-    @property
-    def height(self):
-        return [ self._split_pos, self.sy - self._split_pos - 1 ]
+            offset = 0
+            for c, size in zip(self.children, sizes):
+
+                c.set_location(Location(
+                        self.location.px + offset,
+                        self.location.py,
+                        size,
+                        self.location.sy))
+                logger.info(str(c.location))
+                offset += size + 1
+

@@ -46,21 +46,31 @@ class Client: # TODO: rename to window.
         self.layout.set_location(Location(0, 0, sx, sy))
         self.renderer.invalidate(Redraw.Borders)
 
-    def new_pane(self):
+    def new_pane(self, vsplit=False):
         pane = Pane('/bin/bash', lambda: self.renderer.invalidate(Redraw.Panes))
-        self.active_pane = pane
 
-        self.vsplit.add(pane)
+        if self.active_pane:#  and self.active_pane.parent:
+            parent = self.active_pane.parent
+            log('parent=' + str(parent))
+            assert isinstance(parent, TileContainer)
+            parent.split(pane, vsplit=vsplit, after_child=self.active_pane)
+        else:
+            self.layout.add(pane)
+            assert pane.parent
+
+        self.active_pane = pane
+        assert self.active_pane.parent, 'no active pane parent'
+
         self.renderer.invalidate(Redraw.All)
 
-        for c in self.vsplit.children:
-            log('         size= %r' % repr(c.location))
+  #      for c in self.vsplit.children:
+  #          log('         size= %r' % repr(c.location))
 
         #
         @asyncio.coroutine
         def run_pane():
             yield from pane.start()
-            self.vsplit.remove(pane)
+            self.active_pane.parent.remove(self.active_pane)
 
             self.pane_runners.remove(f)
             self.renderer.invalidate(Redraw.All)
@@ -68,9 +78,6 @@ class Client: # TODO: rename to window.
 
         f = asyncio.async(run_pane())
         self.pane_runners.append(f)
-
-    def vsplit(self):
-        pass
 
     @property
     def panes(self):
@@ -122,14 +129,14 @@ class Client: # TODO: rename to window.
                     self.new_pane()
 
                 elif c2 == b'|':
-                    self.vsplit()
+                    self.new_pane(vsplit=True)
 
                 elif c2 == b'x':
                     if self.active_pane:
                         self.active_pane.kill_process()
 
                 elif c2 == b'R':
-                    self.renderer.invalidate(Redraw.ALL)
+                    self.renderer.invalidate(Redraw.All)
             else:
                 self.active_pane.write_input(char)
 
