@@ -1,5 +1,6 @@
 from collections import namedtuple
 import weakref
+from log import logger
 
 Location = namedtuple('Position', 'px py sx sy')
 
@@ -30,10 +31,6 @@ class Container:
     def parent(self):
         return self._get_parent()
 
-    #@property
-    #def location(self):
-    #    return self.location
-
     def set_location(self, location):
         self.location = location
         self.resize()
@@ -62,7 +59,6 @@ class Container:
         self.resize()
 
 
-
 class PaneContainer(Container):
     def __init__(self, pane):
         super().__init__()
@@ -80,14 +76,34 @@ class PaneContainer(Container):
             self.pane.set_position(l.px, l.py, l.sx, l.sy)
 
 
-class Split(Container):
+class TileContainer(Container):
+    """
+    Base class for a container that can do horizontal and vertical splits.
+    """
     def __init__(self):
         super().__init__()
         self.children = []
 
-from log import logger
+    def split(self, pane_container, horizontal=False, after_child=None):
+        """
+        Split and add pane_container.
+        """
+        # Create split instance
+        split = HSplit() if horizontal else HSplit()
 
-class VSplit(Split):
+        if after_child is None:
+            index = 0
+        else:
+            assert after_child in self.children
+
+            index = self.children.find(after_child)
+            after_child._get_parent = lambda:None
+            split.add(after_child)
+
+        split.add(pane_container)
+
+
+class VSplit(TileContainer):
     """ One pane at the left, one at the right. """
     def resize(self):
         if self.location and self.children:
@@ -108,22 +124,16 @@ class VSplit(Split):
                 offset += size + 1
 
 
-#class HSplit(Split):
-#    """ One pane at the top, one at the bottom. """
-#    def __init__(self, sx, sy):
-#        super().__init__(sx, sy)
-#        self._split_pos = int((sy - 1) / 2) # We reserve one space for the border.
-#
-#    @property
-#    def widths(self):
-#        return [ self.sx, self.sx ]
-#
-#    @property
-#    def height(self):
-#        return [ self._split_pos, self.sy - self._split_pos - 1 ]
-#
+class HSplit(TileContainer):
+    """ One pane at the top, one at the bottom. """
+    def __init__(self, sx, sy):
+        super().__init__(sx, sy)
+        self._split_pos = int((sy - 1) / 2) # We reserve one space for the border.
 
-class Layout(Container):
-    def __init__(self):
-        super().__init__()
-        self.active_pane = None
+    @property
+    def widths(self):
+        return [ self.sx, self.sx ]
+
+    @property
+    def height(self):
+        return [ self._split_pos, self.sy - self._split_pos - 1 ]

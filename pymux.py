@@ -8,9 +8,7 @@ from invalidate import Redraw
 from renderer import Renderer
 from panes import Pane
 from utils import get_size
-
-# Set terminal:
-sys.stdout.write('\033[?1049h') # Enter alternate screen buffer
+from layout import TileContainer, VSplit, PaneContainer, Location
 
 loop = asyncio.get_event_loop()
 
@@ -21,6 +19,7 @@ logging.basicConfig(stream=logfile, level=logging.INFO)
 def log(msg):
     logfile.write(msg + '\n')
     logfile.flush()
+
 
 class Client: # TODO: rename to window.
     def __init__(self):
@@ -34,7 +33,7 @@ class Client: # TODO: rename to window.
         sy, sx = get_size(sys.stdout)
         log('Client created size=%s %s' % (sx, sy))
 
-        self.layout = Layout()
+        self.layout = TileContainer()
         self.layout.set_location(Location(0, 0, sx, sy))
 
         self.vsplit = VSplit()
@@ -151,7 +150,6 @@ class InputProtocol: # TODO: inherit from protocol.
         asyncio.async(process())
 
 
-from layout import Layout, VSplit, PaneContainer, Location
 
 @asyncio.coroutine
 def run():
@@ -172,6 +170,9 @@ def run():
 
 
 try:
+    # Set terminal:
+    sys.stdout.write('\033[?1049h') # Enter alternate screen buffer
+
     loop.run_until_complete(run())
     sys.stdout.write('\033[?1049l') # Quit alternate screen buffer
 except Exception as e:

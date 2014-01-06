@@ -33,6 +33,7 @@ class CellPosition:
     BottomRightBorder = Position.Bottom | Position.Right
     BottomLeftBorder = Position.Bottom | Position.Left
 
+
 class SubProcessProtocol(asyncio.protocols.SubprocessProtocol):
     def __init__(self, pane):
         self.transport = None
@@ -43,7 +44,6 @@ class SubProcessProtocol(asyncio.protocols.SubprocessProtocol):
 
     def data_received(self, data):
         self.pane.write_output(data.decode('utf-8'))
-
 
 
 class Pane:
