@@ -1,20 +1,13 @@
-
-import subprocess
 import asyncio
 import sys
-import os
-import tty
-import io
 import signal
-import fcntl
-import array
-import termios
-import time
-import select
 import logging
 
 from std import raw_mode
 from invalidate import Redraw
+from renderer import Renderer
+from panes import Pane
+from utils import get_size
 
 # Set terminal:
 sys.stdout.write('\033[?1049h') # Enter alternate screen buffer
@@ -29,15 +22,10 @@ def log(msg):
     logfile.write(msg + '\n')
     logfile.flush()
 
-
-from renderer import Renderer
-from panes import Pane
-from utils import get_size, set_size
-
-class Client:
+class Client: # TODO: rename to window.
     def __init__(self):
-        self.panes = [ ]
         self.pane_runners = [ ] # Futures
+        self.active_pane = None
 
         self._input_parser_generator = self._input_parser()
         self._input_parser_generator.send(None)
@@ -52,7 +40,7 @@ class Client:
         self.vsplit = VSplit()
         self.layout.add(self.vsplit)
 
-        self.renderer = Renderer(self.layout)
+        self.renderer = Renderer(self)
 
     def update_size(self):
         sy, sx = get_size(sys.stdout)
@@ -61,7 +49,7 @@ class Client:
 
     def new_pane(self):
         pane = Pane('/bin/bash', lambda: self.renderer.invalidate(Redraw.Panes))
-        self.layout.active_pane = pane
+        self.active_pane = pane
 
         container = PaneContainer(pane)
         self.vsplit.add(container)
@@ -83,17 +71,24 @@ class Client:
         f = asyncio.async(run_pane())
         self.pane_runners.append(f)
 
+    def vsplit(self):
+        pass
+
+    @property
+    def panes(self):
+        return self.layout.panes
+
     # Commands
 
     def focus_next(self):
-        if self.layout.active_pane:
+        if self.active_pane:
             panes = list(self.layout.panes)
             if panes:
                 try:
-                    index = panes.index(self.layout.active_pane) + 1
+                    index = panes.index(self.active_pane) + 1
                 except ValueError:
                     index = 0
-                self.layout.active_pane = panes[index % len(panes)]
+                self.active_pane = panes[index % len(panes)]
                 self.renderer.invalidate(Redraw.Cursor | Redraw.Borders)
 
     @asyncio.coroutine
@@ -119,8 +114,8 @@ class Client:
 
                 # Twice pressed escape char
                 if c2 == b'\x01':
-                    if self.layout.active_pane:
-                        self.layout.active_pane.write_input(char)
+                    if self.active_pane:
+                        self.active_pane.write_input(char)
 
                 elif c2 == b'n':
                     self.focus_next()
@@ -128,14 +123,17 @@ class Client:
                 elif c2 == b'c':
                     self.new_pane()
 
+                elif c2 == b'|':
+                    self.vsplit()
+
                 elif c2 == b'x':
-                    if self.layout.active_pane:
-                        self.layout.active_pane.kill_process()
+                    if self.active_pane:
+                        self.active_pane.kill_process()
 
                 elif c2 == b'R':
                     self.renderer.invalidate(Redraw.ALL)
             else:
-                self.layout.active_pane.write_input(char)
+                self.active_pane.write_input(char)
 
 
 class InputProtocol: # TODO: inherit from protocol.

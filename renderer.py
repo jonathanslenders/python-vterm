@@ -70,11 +70,11 @@ reverse_bgcolour_code = dict((v,k) for k,v in pyte.graphics.BG.items())
 
 
 class Renderer:
-    def __init__(self, layout):
+    def __init__(self, client):
         # Invalidate state
         self._invalidated = False
         self._invalidate_parts = 0
-        self.layout = layout
+        self.client = client
 
     def invalidate(self, invalidate_parts=Redraw.All):
         """ Schedule repaint. """
@@ -123,7 +123,7 @@ class Renderer:
         if self._invalidate_parts & Redraw.Panes:
             only_dirty = not bool(self._invalidate_parts & Redraw.ClearFirst)
             logger.info('Redraw panes')
-            for pane in self.layout.panes:
+            for pane in self.client.panes:
                 data += self._repaint_pane(pane, only_dirty=only_dirty)
 
         # Draw borders
@@ -132,9 +132,9 @@ class Renderer:
             data += self._repaint_border()
 
         # Set cursor to right position (if visible.)
-        active_pane = self.layout.active_pane
+        active_pane = self.client.active_pane
 
-        if active_pane and not self.layout.active_pane.screen.cursor.hidden:
+        if active_pane and not active_pane.screen.cursor.hidden:
             ypos, xpos = active_pane.cursor_position
             write('\033[%i;%iH' % (active_pane.py + ypos+1, active_pane.px + xpos+1))
 
@@ -149,10 +149,10 @@ class Renderer:
         data = []
         write = data.append
 
-        for y in range(0, self.layout.location.sy):
+        for y in range(0, self.client.layout.location.sy):
             write('\033[%i;%iH' % (y+1, 0))
 
-            for x in range(0, self.layout.location.sx):
+            for x in range(0, self.client.layout.location.sx):
                 border_type, is_active = self._check_cell(x, y)
                 if border_type:
 
@@ -205,8 +205,6 @@ class Renderer:
 
         return data
 
-
-
     def _check_cell(self, x, y):
         """ For a given (x,y) cell, return the pane to which this belongs, and
         the type of border we have there.
@@ -217,7 +215,7 @@ class Renderer:
         mask = 0
         is_active = False
 
-        for pane in self.layout.panes:
+        for pane in self.client.panes:
             cell_position = pane._check_cell(x, y)
 
             # If inside pane:
@@ -226,7 +224,7 @@ class Renderer:
 
             mask |= CellPositionToBorderType[cell_position]
 
-            is_active = is_active or (cell_position and pane == self.layout.active_pane)
+            is_active = is_active or (cell_position and pane == self.client.active_pane)
 
         return mask, is_active
 

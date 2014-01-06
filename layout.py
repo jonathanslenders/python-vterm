@@ -127,21 +127,3 @@ class Layout(Container):
     def __init__(self):
         super().__init__()
         self.active_pane = None
-
-    def write_input(self, data):
-        """ Write user key strokes to the input of the active pane. """
-        if self.active_pane:
-            self.active_pane.write_input(data)
-
-    # Commands
-
-#    def focus_next(self):
-#        if self.active_pane:
-#            panes = list(self.panes)
-#            if panes:
-#                try:
-#                    index = panes.index(self.active_pane) + 1
-#                except ValueError:
-#                    index = 0
-#                self.active_pane = panes[index % len(panes)]
-#                #self.invalidate()
