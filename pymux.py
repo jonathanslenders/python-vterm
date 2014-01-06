@@ -8,7 +8,7 @@ from invalidate import Redraw
 from renderer import Renderer
 from panes import Pane
 from utils import get_size
-from layout import TileContainer, VSplit, PaneContainer, Location
+from layout import TileContainer, VSplit, Location
 
 loop = asyncio.get_event_loop()
 
@@ -50,8 +50,7 @@ class Client: # TODO: rename to window.
         pane = Pane('/bin/bash', lambda: self.renderer.invalidate(Redraw.Panes))
         self.active_pane = pane
 
-        container = PaneContainer(pane)
-        self.vsplit.add(container)
+        self.vsplit.add(pane)
         self.renderer.invalidate(Redraw.All)
 
         for c in self.vsplit.children:
@@ -61,7 +60,7 @@ class Client: # TODO: rename to window.
         @asyncio.coroutine
         def run_pane():
             yield from pane.start()
-            self.vsplit.remove(container)
+            self.vsplit.remove(pane)
 
             self.pane_runners.remove(f)
             self.renderer.invalidate(Redraw.All)

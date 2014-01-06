@@ -59,23 +59,6 @@ class Container:
         self.resize()
 
 
-class PaneContainer(Container):
-    def __init__(self, pane):
-        super().__init__()
-        self.pane = pane
-
-    @property
-    def panes(self):
-        yield self.pane
-
-    def resize(self):
-        if self.location:
-            # Resize the actual pane.
-            #self.pane.set_location(self.location)
-            l = self.location
-            self.pane.set_position(l.px, l.py, l.sx, l.sy)
-
-
 class TileContainer(Container):
     """
     Base class for a container that can do horizontal and vertical splits.

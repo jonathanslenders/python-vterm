@@ -8,6 +8,7 @@ import io
 from log import logger
 from utils import set_size
 from pexpect_utils import pty_make_controlling_tty
+from layout import Container
 
 loop = asyncio.get_event_loop()
 
@@ -46,8 +47,10 @@ class SubProcessProtocol(asyncio.protocols.SubprocessProtocol):
         self.pane.write_output(data.decode('utf-8'))
 
 
-class Pane:
+class Pane(Container):
     def __init__(self, command='/usr/bin/vim', invalidate_callback=None):
+        super().__init__()
+
         self.invalidate = invalidate_callback
         self.command = command
 
@@ -77,17 +80,25 @@ class Pane:
         # Finished
         self.finished = False
 
-    def set_position(self, px, py, sx, sy):
+    @property
+    def panes(self):
+        yield self
+
+    def add(self, child):
+        # Pane is a leaf node.
+        raise NotImplementedError
+
+    def set_location(self, location):
         """ Set position of pane in window. """
                 # TODO: The position should probably not be a property of the
                 #       pane itself.  A pane can appear in several windows.
-        logger.info('set_position(px=%r, py=%r, sx=%r, sy=%r)' % (px, py, sx, sy))
+        #logger.info('set_position(px=%r, py=%r, sx=%r, sy=%r)' % (px, py, sx, sy))
 
-        self.px = px
-        self.py = py
-        self.sx = sx
-        self.sy = sy
-        self.screen.resize(sy, sx)
+        self.px = location.px
+        self.py = location.py
+        self.sx = location.sx
+        self.sy = location.sy
+        self.screen.resize(self.sy, self.sx)
         set_size(self.slave, self.sy, self.sx) # TODO: set on stdout??
 
         self.invalidate()
