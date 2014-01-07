@@ -36,7 +36,6 @@ reverse_colour_code = dict((v,k) for k,v in pyte.graphics.FG.items())
 reverse_bgcolour_code = dict((v,k) for k,v in pyte.graphics.BG.items())
 
 
-
 class Renderer:
     def __init__(self, client):
         # Invalidate state

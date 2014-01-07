@@ -38,7 +38,6 @@ class Client: # TODO: rename to window.
 
         self.layout = TileContainer()
         self.layout.set_location(Location(0, 0, self.sx, self.sy - 1))
-        #self.layout.__repr__ = lambda self: "<layout>"# XXX: remove line
 
         self.status_bar = StatusBar()
 
@@ -94,6 +93,30 @@ class Client: # TODO: rename to window.
                 except ValueError:
                     index = 0
                 self.active_pane = panes[index % len(panes)]
+                self.renderer.invalidate(Redraw.Cursor | Redraw.Borders)
+
+    def move_focus(self, direction):
+        pos = self.active_pane.location
+
+        if direction == 'U':
+            x = pos.px
+            y = pos.py - 2
+        elif direction == 'D':
+            x = pos.px
+            y = pos.py + pos.sy + 2
+        elif direction == 'L':
+            x = pos.px - 2
+            y = pos.py
+        elif direction == 'R':
+            x = pos.px + pos.sx + 2
+            y = pos.py
+        else:
+            raise Exception('Invalid direction')
+
+        # Now find the pane at this location.
+        for p in self.layout.panes:
+            if p.is_inside(x, y):
+                self.active_pane = p
                 self.renderer.invalidate(Redraw.Cursor | Redraw.Borders)
 
     @asyncio.coroutine
@@ -158,6 +181,15 @@ class Client: # TODO: rename to window.
                     self.active_pane.parent.resize_tile('D', 4)
                     log('Resize down.')
                     self.renderer.invalidate(Redraw.All)
+
+                elif c2 == b'H':
+                    self.move_focus('L')
+                elif c2 == b'K':
+                    self.move_focus('U')
+                elif c2 == b'L':
+                    self.move_focus('R')
+                elif c2 == b'J':
+                    self.move_focus('D')
 
                 elif c2 == b'R':
                     self.renderer.invalidate(Redraw.All)

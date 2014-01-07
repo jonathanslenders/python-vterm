@@ -8,7 +8,7 @@ import io
 from .log import logger
 from .utils import set_size
 from .pexpect_utils import pty_make_controlling_tty
-from .layout import Container
+from .layout import Container, Location
 
 loop = asyncio.get_event_loop()
 
@@ -194,6 +194,8 @@ class Pane(Container):
         self.sx = 120
         self.sy = 24
 
+        self.location = Location(self.py, self.py, self.sx, self.sy)
+
         # Create output stream.
         #self.screen = pyte.DiffScreen(self.sx, self.sy)
         self.screen = AlternateScreen(self.sx, self.sy)
@@ -226,6 +228,7 @@ class Pane(Container):
                 # TODO: The position should probably not be a property of the
                 #       pane itself.  A pane can appear in several windows.
         logger.info('set_position(px=%r, py=%r, sx=%r, sy=%r)' % (location.px, location.py, location.sx, location.sy))
+        self.location = location
 
         self.px = location.px
         self.py = location.py
@@ -295,7 +298,7 @@ class Pane(Container):
         self.invalidate()
 
     def write_input(self, data):
-        """    Write user key strokes to the input. """
+        """ Write user key strokes to the input. """
         os.write(self.master, data)
 
     @property
@@ -318,6 +321,11 @@ class Pane(Container):
             CellPosition.Outside: BorderType.Outside,
         }[ self._get_cell_position(x,y) ]
 
+    def is_inside(self, x, y):
+        """ True when this coordinate appears inside this pane. """
+        return (x >= self.px and x < self.px + self.sx and
+                y >= self.py and y < self.py + self.sy)
+
     def _get_cell_position(self, x, y):
         """ For a given (x,y) cell, return the CellPosition. """
         # If outside this pane, skip it.
@@ -325,7 +333,7 @@ class Pane(Container):
             return CellPosition.Outside
 
 #        #  If inside, return that.
-#        if x >= self.px and x < self.px + self.sx and y >= self.py and y < self.py + self.sy:
+#        if self.is_inside(x, y):
 #            return CellPosition.Inside
 
         # Use bitmask for borders:
