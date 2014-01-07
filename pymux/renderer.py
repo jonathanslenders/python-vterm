@@ -58,9 +58,9 @@ class Renderer:
         self._invalidated = False
         start = datetime.datetime.now()
 
-        # Make sure that stdout is blocking when we write to it.
-        # By calling connect_read_pipe on stdin, asyncio will mark the stdin as
-        # non blocking (in asyncio.unix_events._set_nonblocking). This causes
+        # Make sure that stdout is blocking when we write to it.  By calling
+        # connect_read_pipe on stdin, asyncio will mark the stdin as non
+        # blocking (in asyncio.unix_events._set_nonblocking). This causes
         # stdout to be nonblocking as well.  That's fine, but it's never a good
         # idea to write to a non blocking stdout, as it will often raise the
         # "write could not complete without blocking" error and not write to
@@ -71,13 +71,15 @@ class Renderer:
         fcntl.fcntl(fd, fcntl.F_SETFL, new_flags)
 
         try:
-            sys.stdout.write(''.join(self._repaint()))
+            data = ''.join(self._repaint())
+            sys.stdout.write(data)
             sys.stdout.flush()
+
+            logger.info('Redraw generation done in %ss, bytes=%i' %
+                    (datetime.datetime.now() - start, len(data)))
         finally:
             # Make blocking again
             fcntl.fcntl(fd, fcntl.F_SETFL, flags)
-
-        logger.info('Redraw generation done in %ss' % (datetime.datetime.now() - start))
 
     def _repaint(self):
         data = []
