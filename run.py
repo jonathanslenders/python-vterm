@@ -122,10 +122,10 @@ class Client: # TODO: rename to window.
                 elif c2 == b'n':
                     self.focus_next()
 
-                elif c2 == b'c':
+                elif c2 == b'"':
                     self.new_pane()
 
-                elif c2 == b'|':
+                elif c2 == b'%':
                     self.new_pane(vsplit=True)
 
                 elif c2 == b'x':

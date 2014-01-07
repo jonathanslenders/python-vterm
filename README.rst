@@ -23,4 +23,4 @@ Dependencies
 Running
 -------
 
-Right now, do: ```python pymux.py```
+Right now, do: ```python run.py```
