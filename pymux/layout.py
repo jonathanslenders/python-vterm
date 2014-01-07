@@ -28,6 +28,8 @@ class Container:
         for c in self.children:
             yield from c.panes
 
+    def __repr__(self):
+        return '%s(children=%r)' % (self.__class__.__name__, self.children)
     @property
     def parent(self):
         return self._get_parent()
@@ -67,6 +69,7 @@ class TileContainer(Container):
     def __init__(self):
         super().__init__()
         self.children = []
+        self.sizes = [10, 10] # Initially, panes have the same size by default.
 
     def split(self, child, vsplit=False, after_child=None):
         """
@@ -74,6 +77,8 @@ class TileContainer(Container):
         """
         # Create split instance
         split = HSplit() if vsplit else VSplit()
+        split._get_parent = weakref.ref(self)
+        assert after_child # XXX
 
         if after_child is None:
             index = 0
@@ -91,6 +96,8 @@ class TileContainer(Container):
         self.resize()
 
     def remove(self, child):
+        logger.info('remove self=%r, child=%r, children=%r, parent=%r' % (self, child, self.children, self.parent))
+        assert child in self.children
         self.children.remove(child)
 
         # When there is no child left in this container, remove this container
@@ -98,51 +105,117 @@ class TileContainer(Container):
         if len(self.children) == 0:
             parent = self.parent
             if parent:
-                self.parent.remove(self) # TODO: does not yet seem to work
+                self.parent.remove(self)
+        # When there is only one pane left, place it in the parent container.
+        elif len(self.children) == 1 and self.parent:
+            logger.info('one child left. putting into parent.')
+
+            index = self.parent.children.index(self)
+            self.children[0]._get_parent = weakref.ref(self.parent)
+            self.parent.children[index] = self.children[0]
+            self.parent.resize()
         else:
+            logger.info('two childs left. %r' % self.children)
+
             # Trigger resize
             self.resize()
 
-class VSplit(TileContainer):
-    """ One pane at the left, one at the right. """
+    def resize_tile(self, direction, amount):
+        raise NotImplementedError
+
+    def _divide_space(self, available_space):
+        size1 = int(available_space * self.sizes[0] / sum(self.sizes))
+        size2 = available_space - size1
+        self.sizes = [size1, size2]
+
+class VSplit(TileContainer): # TODO: the naming is wrong. This is called HSplit.
+    """ One pane at the top, one at the bottom. """
     def resize(self):
         if self.location and self.children:
             # Reserve space for the borders.
             available_space = self.location.sy - len(self.children) + 1
 
             # Now device equally.
-            sizes = divide_equally(available_space, len(self.children))
+            self._divide_space(available_space)
+            self._apply_sizes()
 
-            offset = 0
-            for c, size in zip(self.children, sizes):
-                c.set_location(Location(
-                        self.location.px,
-                        self.location.py + offset,
-                        self.location.sx,
-                        size))
-                offset += size + 1
+    def _apply_sizes(self):
+        offset = 0
+        for c, size in zip(self.children, self.sizes):
+            c.set_location(Location(
+                    self.location.px,
+                    self.location.py + offset,
+                    self.location.sx,
+                    size))
+            offset += size + 1
+
+    def resize_tile(self, direction, amount):
+        logger.info("Resizing pane: %s %s" % (direction, amount))
+
+        # If up/down handle here.
+        if direction in ('U', 'D'):
+            # Scale sizes
+            available_space = self.location.sy - len(self.children) + 1
+            sizes = self.sizes
+
+            # Apply sizes
+            if direction == 'U' and sizes[0] > 1:
+                diff = min(amount, self.sizes[0] - 2) # Minimum pane size.
+                self.sizes = [sizes[0] - diff, sizes[1] + diff]
+                self._apply_sizes()
+            if direction == 'D' and sizes[1] > 1:
+                diff = min(amount, self.sizes[1] - 2)
+                self.sizes = [sizes[0] + diff, sizes[1] - diff]
+                self._apply_sizes()
+
+        # Otherwise, handle in parent.
+        elif self.parent:
+            logger.info('go to parent. in vsplit..')
+            self.parent.resize_tile(direction, amount)
 
 
 class HSplit(TileContainer):
-    """ One pane at the top, one at the bottom. """
+    """ One pane at the left, one at the right. """
     def resize(self):
-        if self.location and self.children:
+        if self.location and self.children:# TODO: assert len(self.children) == 2
             # Reserve space for the borders.
             available_space = self.location.sx - len(self.children) + 1
-            logger.info("available space: %s" % available_space)
 
             # Now device equally.
-            sizes = divide_equally(available_space, len(self.children))
-            logger.info("sizes: %s" % sizes)
+            self._divide_space(available_space)
+            self._apply_sizes()
 
-            offset = 0
-            for c, size in zip(self.children, sizes):
+    def _apply_sizes(self):
+        offset = 0
+        for c, size in zip(self.children, self.sizes):
+            c.set_location(Location(
+                    self.location.px + offset,
+                    self.location.py,
+                    size,
+                    self.location.sy))
+            offset += size + 1
 
-                c.set_location(Location(
-                        self.location.px + offset,
-                        self.location.py,
-                        size,
-                        self.location.sy))
-                logger.info(str(c.location))
-                offset += size + 1
+    def resize_tile(self, direction, amount):
+        logger.info("Resizing pane: %s %s" % (direction, amount))
+
+        # If up/down handle here.
+        if direction in ('L', 'R'):
+            # Scale sizes
+            available_space = self.location.sx - len(self.children) + 1
+            sizes = self.sizes
+
+            # Apply sizes
+            if direction == 'L' and sizes[0] > 1:
+                diff = min(amount, self.sizes[0] - 2) # Minimum pane size.
+                self.sizes = [sizes[0] - diff, sizes[1] + diff]
+                self._apply_sizes()
+            if direction == 'R' and sizes[1] > 1:
+                diff = min(amount, self.sizes[1] - 2)
+                self.sizes = [sizes[0] + diff, sizes[1] - diff]
+                self._apply_sizes()
+
+        # Otherwise, handle in parent.
+        elif self.parent:
+            logger.info('go to parent. in hsplit..')
+            self.parent.resize_tile(direction, amount)
 

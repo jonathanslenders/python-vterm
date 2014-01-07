@@ -10,7 +10,7 @@ from pymux.invalidate import Redraw
 from pymux.renderer import Renderer
 from pymux.panes import Pane
 from pymux.utils import get_size
-from pymux.layout import TileContainer, VSplit, Location
+from pymux.layout import TileContainer, Location
 from pymux.statusbar import StatusBar
 
 loop = asyncio.get_event_loop()
@@ -38,9 +38,8 @@ class Client: # TODO: rename to window.
 
         self.layout = TileContainer()
         self.layout.set_location(Location(0, 0, self.sx, self.sy - 1))
+        #self.layout.__repr__ = lambda self: "<layout>"# XXX: remove line
 
-        self.vsplit = VSplit()
-        self.layout.add(self.vsplit)
         self.status_bar = StatusBar()
 
         self.renderer = Renderer(self)
@@ -142,6 +141,23 @@ class Client: # TODO: rename to window.
                 elif c2 == b'x':
                     if self.active_pane:
                         self.active_pane.kill_process()
+
+                elif c2 == b'h':
+                    self.active_pane.parent.resize_tile('L', 4)
+                    self.renderer.invalidate(Redraw.All)
+
+                elif c2 == b'k':
+                    self.active_pane.parent.resize_tile('U', 4)
+                    self.renderer.invalidate(Redraw.All)
+
+                elif c2 == b'l':
+                    self.active_pane.parent.resize_tile('R', 4)
+                    self.renderer.invalidate(Redraw.All)
+
+                elif c2 == b'j':
+                    self.active_pane.parent.resize_tile('D', 4)
+                    log('Resize down.')
+                    self.renderer.invalidate(Redraw.All)
 
                 elif c2 == b'R':
                     self.renderer.invalidate(Redraw.All)
