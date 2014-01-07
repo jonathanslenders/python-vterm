@@ -89,6 +89,18 @@ class TileContainer(Container):
         assert child.parent
         self.resize()
 
+    def remove(self, child):
+        self.children.remove(child)
+
+        # When there is no child left in this container, remove this container
+        # from the parent.
+        if len(self.children) == 0:
+            parent = self.parent
+            if parent:
+                self.parent.remove(self) # TODO: does not yet seem to work
+        else:
+            # Trigger resize
+            self.resize()
 
 class VSplit(TileContainer):
     """ One pane at the left, one at the right. """

@@ -69,6 +69,115 @@ class SubProcessProtocol(asyncio.protocols.SubprocessProtocol):
     def data_received(self, data):
         self.pane.write_output(data.decode('utf-8'))
 
+# Patch pyte.graphics to accept High intensity colours as well.
+from pyte.graphics import FG, BG
+
+FG.update({
+    90: "hi_fg_1",
+    91: "hi_fg_2",
+    92: "hi_fg_3",
+    93: "hi_fg_4",
+    94: "hi_fg_5",
+    95: "hi_fg_6",
+    96: "hi_fg_7",
+    97: "hi_fg_8",
+    98: "hi_fg_9",
+    99: "hi_fg_10",
+})
+
+BG.update({
+    100: "hi_bg_1",
+    101: "hi_bg_2",
+    102: "hi_bg_3",
+    103: "hi_bg_4",
+    104: "hi_bg_5",
+    105: "hi_bg_6",
+    106: "hi_bg_7",
+    107: "hi_bg_8",
+    108: "hi_bg_9",
+    109: "hi_bg_10",
+})
+
+
+class AlternateScreen(pyte.DiffScreen):
+    """
+    DiffScreen which also implements the alternate screen buffer like Xterm.
+    """
+    swap_variables = [
+            'mode',
+            'margins',
+            'charset',
+            'g0_charset',
+            'g1_charset',
+            'tabstops',
+            'cursor', ]
+
+    def __init__(self, *args):
+        super().__init__(*args)
+        self._original_screen = None
+
+    def set_mode(self, *modes, **kwargs):
+        # On "\e[?1049h", enter alternate screen mode. Backup the current state,
+        if 1049 in modes:
+            self._original_screen = self[:]
+            self._original_screen_vars = \
+                { v:getattr(self, v) for v in self.swap_variables }
+            self.reset()
+
+        super().set_mode(*modes, **kwargs)
+
+    def reset_mode(self, *modes, **kwargs):
+        # On "\e[?1049l", restore from alternate screen mode.
+        if 1049 in modes and self._original_screen:
+            for k, v in self._original_screen_vars.items():
+                setattr(self, k, v)
+            self[:] = self._original_screen
+
+            self._original_screen = None
+            self._original_screen_vars = {}
+            self.dirty.update(range(self.lines))
+
+        super().reset_mode(*modes, **kwargs)
+
+    def select_graphic_rendition(self, *attrs):
+        """ Support 256 colours """
+        g = pyte.graphics
+        replace = {}
+
+        if not attrs:
+            attrs = [0]
+        else:
+            attrs = list(attrs[::-1])
+
+        while attrs:
+            attr = attrs.pop()
+
+            if attr in g.FG:
+                replace["fg"] = g.FG[attr]
+            elif attr in g.BG:
+                replace["bg"] = g.BG[attr]
+            elif attr in g.TEXT:
+                attr = g.TEXT[attr]
+                replace[attr[1:]] = attr.startswith("+")
+            elif not attr:
+                replace = self.default_char._asdict()
+
+            elif attr in (38, 48):
+                n = attrs.pop()
+                if n != 5:
+                    continue
+
+                if attr == 38:
+                    m = attrs.pop()
+                    replace["fg"] = 1024 + m
+                elif attr == 48:
+                    m = attrs.pop()
+                    replace["bg"] = 1024 + m
+
+        self.cursor.attrs = self.cursor.attrs._replace(**replace)
+
+        # See tmux/input.c, line: 1388
+
 
 class Pane(Container):
     def __init__(self, command='/usr/bin/vim', invalidate_callback=None):
@@ -86,7 +195,8 @@ class Pane(Container):
         self.sy = 24
 
         # Create output stream.
-        self.screen = pyte.DiffScreen(self.sx, self.sy)
+        #self.screen = pyte.DiffScreen(self.sx, self.sy)
+        self.screen = AlternateScreen(self.sx, self.sy)
 
         self.stream = pyte.Stream()
         self.stream.attach(self.screen)

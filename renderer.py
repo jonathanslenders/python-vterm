@@ -5,11 +5,10 @@ import fcntl
 import pyte
 
 from log import logger
-from panes import Position, CellPosition, BorderType
+from panes import CellPosition, BorderType
 from invalidate import Redraw
 
 loop = asyncio.get_event_loop()
-
 
 
 BorderSymbols = {
@@ -145,21 +144,30 @@ class Renderer:
 
         for l in range(len(pane.screen)):
             if not only_dirty or l in pane.screen.dirty:
-                lines = pane.screen[l]
+                line = pane.screen[l]
+
+                    # TODO: trim spaces on the right. If there is space until
+                    # the right margin, ig
 
                 # Position cursor for line.
                 write('\033[%i;%iH' % (pane.py + l + 1, pane.px + 1))
 
-                for char in lines:
+                for char in line:
                     write('\033[0m')
 
                     if char.fg != 'default':
-                        colour_code = reverse_colour_code[char.fg]
-                        write('\033[0;%im' % colour_code)
+                        if char.fg in reverse_colour_code:
+                            colour_code = reverse_colour_code[char.fg]
+                            write('\033[0;%im' % colour_code)
+                        else: # 256 colour
+                            write('\033[38;5;%im' % char.fg)
 
                     if char.bg != 'default':
-                        colour_code = reverse_bgcolour_code[char.bg]
-                        write('\033[%im' % colour_code)
+                        if char.bg in reverse_bgcolour_code:
+                            colour_code = reverse_bgcolour_code[char.bg]
+                            write('\033[%im' % colour_code)
+                        else: # 256 colour
+                            write('\033[48;5;%im' % char.fg)
 
                     if char.bold:
                         write('\033[1m')
