@@ -3,6 +3,7 @@ import os
 import asyncio
 import fcntl
 import pyte
+import datetime
 
 from .log import logger
 from .panes import CellPosition, BorderType
@@ -55,6 +56,7 @@ class Renderer:
     def repaint(self):
         """ Do repaint now. """
         self._invalidated = False
+        start = datetime.datetime.now()
 
         # Make sure that stdout is blocking when we write to it.
         # By calling connect_read_pipe on stdin, asyncio will mark the stdin as
@@ -71,10 +73,11 @@ class Renderer:
         try:
             sys.stdout.write(''.join(self._repaint()))
             sys.stdout.flush()
-        except Exception as e:
-            logger.error("%r" % e)
         finally:
+            # Make blocking again
             fcntl.fcntl(fd, fcntl.F_SETFL, flags)
+
+        logger.info('Redraw generation done in %ss' % (datetime.datetime.now() - start))
 
     def _repaint(self):
         data = []
@@ -137,10 +140,10 @@ class Renderer:
         data = []
         write = data.append
 
-        test = []
-        for idx, line in enumerate(pane.screen.display, 1):
-            test.append("{0:2d} {1} ¶\n".format(idx, line))
-        logger.info(''.join(test))
+        #test = []
+        #for idx, line in enumerate(pane.screen.display, 1):
+        #    test.append("{0:2d} {1} ¶\n".format(idx, line))
+        #logger.info(''.join(test))
 
         for l in range(len(pane.screen)):
             if not only_dirty or l in pane.screen.dirty:
@@ -156,15 +159,15 @@ class Renderer:
                     write('\033[0m')
 
                     if char.fg != 'default':
-                        if char.fg in reverse_colour_code:
-                            colour_code = reverse_colour_code[char.fg]
+                        colour_code = reverse_colour_code.get(char.fg, None)
+                        if colour_code:
                             write('\033[0;%im' % colour_code)
                         else: # 256 colour
                             write('\033[38;5;%im' % char.fg)
 
                     if char.bg != 'default':
-                        if char.bg in reverse_bgcolour_code:
-                            colour_code = reverse_bgcolour_code[char.bg]
+                        colour_code = reverse_bgcolour_code.get(char.bg, None)
+                        if reverse_bgcolour_code:
                             write('\033[%im' % colour_code)
                         else: # 256 colour
                             write('\033[48;5;%im' % char.fg)
