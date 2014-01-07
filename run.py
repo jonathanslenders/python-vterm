@@ -11,6 +11,7 @@ from pymux.renderer import Renderer
 from pymux.panes import Pane
 from pymux.utils import get_size
 from pymux.layout import TileContainer, VSplit, Location
+from pymux.statusbar import StatusBar
 
 loop = asyncio.get_event_loop()
 
@@ -32,21 +33,22 @@ class Client: # TODO: rename to window.
         self._input_parser_generator.send(None)
 
         # Create new layout with vsplit.
-        sy, sx = get_size(sys.stdout)
-        log('Client created size=%s %s' % (sx, sy))
+        self.sy, self.sx = get_size(sys.stdout)
+        log('Client created size=%s %s' % (self.sx, self.sy))
 
         self.layout = TileContainer()
-        self.layout.set_location(Location(0, 0, sx, sy))
+        self.layout.set_location(Location(0, 0, self.sx, self.sy - 1))
 
         self.vsplit = VSplit()
         self.layout.add(self.vsplit)
+        self.status_bar = StatusBar()
 
         self.renderer = Renderer(self)
 
     def update_size(self):
-        sy, sx = get_size(sys.stdout)
-        self.layout.set_location(Location(0, 0, sx, sy))
-        self.renderer.invalidate(Redraw.Borders)
+        self.sy, self.sx = get_size(sys.stdout)
+        self.layout.set_location(Location(0, 0, self.sx, self.sy - 1)) # Keep one line for the status bar.
+        self.renderer.invalidate(Redraw.All)
 
     def new_pane(self, vsplit=False):
         pane = Pane('/bin/bash', lambda: self.renderer.invalidate(Redraw.Panes))

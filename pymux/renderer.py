@@ -111,6 +111,10 @@ class Renderer:
             # Make cursor visible
             write('\033[?25h')
 
+        # Draw status bar
+        if self._invalidate_parts & Redraw.StatusBar:
+            data += self._repaint_status_bar()
+
         self._invalidate_parts = Redraw.Nothing
 
         return data
@@ -133,6 +137,32 @@ class Renderer:
                         write('\033[0;%im' % 32)
 
                     write(BorderSymbols[border_type])
+
+        return data
+
+    def _repaint_status_bar(self):
+        data = []
+        write = data.append
+
+        # Go to bottom line
+        write('\033[%i;0H' % self.client.sy)
+
+        # Set background
+        write('\033[%im' % 43) # Brown
+
+        # Set foreground
+        write('\033[%im' % 30) # Black
+
+        # Set bold
+        write('\033[1m')
+
+        text = self.client.status_bar.left_text
+        rtext = self.client.status_bar.right_text
+        space_left = self.client.sx - len(text) - len(rtext)
+
+        text += ' ' * space_left + rtext
+        text = text[:self.client.sx]
+        write(text)
 
         return data
 
