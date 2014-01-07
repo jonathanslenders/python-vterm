@@ -145,6 +145,14 @@ class Renderer:
         #    test.append("{0:2d} {1} ¶\n".format(idx, line))
         #logger.info(''.join(test))
 
+        last_fg = 'default'
+        last_bg = 'default'
+        last_bold = False
+        last_underscore = False
+        last_reverse = False
+
+        write('\033[0m')
+
         for l in range(len(pane.screen)):
             if not only_dirty or l in pane.screen.dirty:
                 line = pane.screen[l]
@@ -155,31 +163,45 @@ class Renderer:
                 # Position cursor for line.
                 write('\033[%i;%iH' % (pane.py + l + 1, pane.px + 1))
 
-                for char in line:
-                    write('\033[0m')
 
-                    if char.fg != 'default':
+                for char in line:
+                    # If the bold/underscore/reverse parameters are reset. Always use global reset.
+                    if (last_bold and not char.bold) or (last_underscore and not char.underscore) or (last_reverse and not char.reverse):
+                        write('\033[0m')
+
+                        last_fg = 'default'
+                        last_bg = 'default'
+                        last_bold = False
+                        last_underscore = False
+                        last_reverse = False
+
+                    if char.fg != last_fg:
                         colour_code = reverse_colour_code.get(char.fg, None)
                         if colour_code:
                             write('\033[0;%im' % colour_code)
                         else: # 256 colour
                             write('\033[38;5;%im' % char.fg)
+                        last_fg = char.fg
 
-                    if char.bg != 'default':
+                    if char.bg != last_bg:
                         colour_code = reverse_bgcolour_code.get(char.bg, None)
-                        if reverse_bgcolour_code:
+                        if colour_code:
                             write('\033[%im' % colour_code)
                         else: # 256 colour
-                            write('\033[48;5;%im' % char.fg)
+                            write('\033[48;5;%im' % char.bg)
+                        last_bg = char.bg
 
-                    if char.bold:
+                    if char.bold and not last_bold:
                         write('\033[1m')
+                        last_bold = char.bold
 
-                    if char.underscore:
+                    if char.underscore and not last_underscore:
                         write('\033[4m')
+                        last_underscore = char.underscore
 
-                    if char.reverse:
+                    if char.reverse and not last_reverse:
                         write('\033[7m')
+                        last_reverse = char.reverse
 
                     write(char.data)
         pane.screen.dirty = set()

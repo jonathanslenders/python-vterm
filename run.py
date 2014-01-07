@@ -102,8 +102,16 @@ class Client: # TODO: rename to window.
             yield from asyncio.gather(* self.pane_runners)
 
     def process_input(self, char):
-        log('Received char: %r' % char)
-        self._input_parser_generator.send(char)
+        log('Received input: %r' % char)
+        self._send_buffer = []
+
+        for c in char:
+            self._input_parser_generator.send(bytes((c,)))
+
+        if self._send_buffer and self.active_pane:
+            log('Sending %r' % b''.join(self._send_buffer))
+            self.active_pane.write_input(b''.join(self._send_buffer))
+            self._send_buffer = []
 
     def _input_parser(self):
         while True:
@@ -116,8 +124,7 @@ class Client: # TODO: rename to window.
 
                 # Twice pressed escape char
                 if c2 == b'\x01':
-                    if self.active_pane:
-                        self.active_pane.write_input(char)
+                    self._send_buffer.append(char)
 
                 elif c2 == b'n':
                     self.focus_next()
@@ -135,7 +142,7 @@ class Client: # TODO: rename to window.
                 elif c2 == b'R':
                     self.renderer.invalidate(Redraw.All)
             else:
-                self.active_pane.write_input(char)
+                self._send_buffer.append(char)
 
 
 class InputProtocol: # TODO: inherit from protocol.
@@ -148,8 +155,7 @@ class InputProtocol: # TODO: inherit from protocol.
     def data_received(self, data):
         @asyncio.coroutine
         def process():
-            for c in data:
-                self.callback(bytes((c,)))
+            self.callback(data)
         asyncio.async(process())
 
 

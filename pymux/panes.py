@@ -297,8 +297,6 @@ class Pane(Container):
     def write_input(self, data):
         """    Write user key strokes to the input. """
         os.write(self.master, data)
-        #self.shell_in.write(data)
-
 
     @property
     def cursor_position(self):
