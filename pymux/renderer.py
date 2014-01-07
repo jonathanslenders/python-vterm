@@ -111,6 +111,15 @@ class Renderer:
             # Make cursor visible
             write('\033[?25h')
 
+            # Set arrows in application/cursor sequences.
+            # (Applications like Vim expect an other kind of cursor sequences.
+            # This mode is the way of telling the VT terminal which sequences
+            # it should send.)
+            if (1 << 5) in active_pane.screen.mode:
+                write('\033[?1h') # Set application sequences
+            else:
+                write('\033[?1l') # Reset
+
         # Draw status bar
         if self._invalidate_parts & Redraw.StatusBar:
             data += self._repaint_status_bar()
