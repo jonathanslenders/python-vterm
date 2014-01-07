@@ -4,9 +4,9 @@ import asyncio
 import fcntl
 import pyte
 
-from log import logger
-from panes import CellPosition, BorderType
-from invalidate import Redraw
+from .log import logger
+from .panes import CellPosition, BorderType
+from .invalidate import Redraw
 
 loop = asyncio.get_event_loop()
 

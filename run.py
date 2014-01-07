@@ -3,12 +3,12 @@ import sys
 import signal
 import logging
 
-from std import raw_mode
-from invalidate import Redraw
-from renderer import Renderer
-from panes import Pane
-from utils import get_size
-from layout import TileContainer, VSplit, Location
+from pymux.std import raw_mode
+from pymux.invalidate import Redraw
+from pymux.renderer import Renderer
+from pymux.panes import Pane
+from pymux.utils import get_size
+from pymux.layout import TileContainer, VSplit, Location
 
 loop = asyncio.get_event_loop()
 
@@ -62,9 +62,6 @@ class Client: # TODO: rename to window.
         assert self.active_pane.parent, 'no active pane parent'
 
         self.renderer.invalidate(Redraw.All)
-
-  #      for c in self.vsplit.children:
-  #          log('         size= %r' % repr(c.location))
 
         #
         @asyncio.coroutine

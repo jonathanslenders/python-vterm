@@ -1,6 +1,7 @@
 from collections import namedtuple
 import weakref
-from log import logger
+
+from .log import logger
 
 Location = namedtuple('Position', 'px py sx sy')
 

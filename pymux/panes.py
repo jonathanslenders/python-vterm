@@ -5,10 +5,10 @@ import pyte
 import os
 import io
 
-from log import logger
-from utils import set_size
-from pexpect_utils import pty_make_controlling_tty
-from layout import Container
+from .log import logger
+from .utils import set_size
+from .pexpect_utils import pty_make_controlling_tty
+from .layout import Container
 
 loop = asyncio.get_event_loop()
 
