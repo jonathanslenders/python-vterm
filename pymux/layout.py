@@ -23,13 +23,9 @@ class Container:
         self.children = []
         self._get_parent = lambda:None # Weakref to parent
 
-    @property
-    def panes(self):
-        for c in self.children:
-            yield from c.panes
-
     def __repr__(self):
         return '%s(children=%r)' % (self.__class__.__name__, self.children)
+
     @property
     def parent(self):
         return self._get_parent()
@@ -39,8 +35,9 @@ class Container:
         self.resize()
 
     def resize(self):
-        for c in self.children:
-            c.set_location(self.location)
+        if self.location:
+            for c in self.children:
+                c.set_location(self.location)
 
     def add(self, child, replace_parent=False):
         """ Add child container. """
@@ -76,7 +73,7 @@ class TileContainer(Container):
         Split and add child.
         """
         # Create split instance
-        split = HSplit() if vsplit else VSplit()
+        split = VSplit() if vsplit else HSplit()
         split._get_parent = weakref.ref(self)
         assert after_child # XXX
 
@@ -121,14 +118,15 @@ class TileContainer(Container):
             self.resize()
 
     def resize_tile(self, direction, amount):
-        raise NotImplementedError
+        """ Ignore resize requests in the base class. """
 
     def _divide_space(self, available_space):
         size1 = int(available_space * self.sizes[0] / sum(self.sizes))
         size2 = available_space - size1
         self.sizes = [size1, size2]
 
-class VSplit(TileContainer): # TODO: the naming is wrong. This is called HSplit.
+
+class HSplit(TileContainer):
     """ One pane at the top, one at the bottom. """
     def resize(self):
         if self.location and self.children:
@@ -155,7 +153,6 @@ class VSplit(TileContainer): # TODO: the naming is wrong. This is called HSplit.
         # If up/down handle here.
         if direction in ('U', 'D'):
             # Scale sizes
-            available_space = self.location.sy - len(self.children) + 1
             sizes = self.sizes
 
             # Apply sizes
@@ -174,7 +171,7 @@ class VSplit(TileContainer): # TODO: the naming is wrong. This is called HSplit.
             self.parent.resize_tile(direction, amount)
 
 
-class HSplit(TileContainer):
+class VSplit(TileContainer):
     """ One pane at the left, one at the right. """
     def resize(self):
         if self.location and self.children:# TODO: assert len(self.children) == 2
@@ -201,7 +198,6 @@ class HSplit(TileContainer):
         # If up/down handle here.
         if direction in ('L', 'R'):
             # Scale sizes
-            available_space = self.location.sx - len(self.children) + 1
             sizes = self.sizes
 
             # Apply sizes

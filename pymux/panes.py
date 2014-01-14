@@ -4,6 +4,7 @@ import resource
 import pyte
 import os
 import io
+import signal
 
 from .log import logger
 from .utils import set_size
@@ -34,6 +35,7 @@ class CellPosition:
     BottomRightBorder = Position.Bottom | Position.Right
     BottomLeftBorder = Position.Bottom | Position.Left
 
+
 class BorderType:
     """ Position of a cell in a window. """
     Outside = 0
@@ -57,17 +59,17 @@ class BorderType:
     TopLeft = Position.Right | Position.Bottom
 
 
-
 class SubProcessProtocol(asyncio.protocols.SubprocessProtocol):
-    def __init__(self, pane):
+    def __init__(self, write_output):
         self.transport = None
-        self.pane = pane
+        self._write_output = write_output
 
     def connection_made(self, transport):
         self.transport = transport
 
     def data_received(self, data):
-        self.pane.write_output(data.decode('utf-8'))
+        self._write_output(data.decode('utf-8'))
+
 
 # Patch pyte.graphics to accept High intensity colours as well.
 from pyte.graphics import FG, BG
@@ -214,20 +216,22 @@ class Pane(Container):
 
         # Finished
         self.finished = False
+        self.process_id = None
 
     @property
     def panes(self):
         yield self
 
     def add(self, child):
-        # Pane is a leaf node.
-        raise NotImplementedError
+        # Pane is a leaf node. Disallow
+        raise Exception('Not allowed to add childnodes to a Pane node.')
 
     def set_location(self, location):
         """ Set position of pane in window. """
                 # TODO: The position should probably not be a property of the
                 #       pane itself.  A pane can appear in several windows.
-        logger.info('set_position(px=%r, py=%r, sx=%r, sy=%r)' % (location.px, location.py, location.sx, location.sy))
+        logger.info('set_position(px=%r, py=%r, sx=%r, sy=%r)' %
+                            (location.px, location.py, location.sx, location.sy))
         self.location = location
 
         self.px = location.px
@@ -267,18 +271,18 @@ class Pane(Container):
 
         elif pid > 0:
             logger.info('Forked process: %r' % pid)
-            self.process_pid = pid
+            self.process_id = pid
             # Parent
             pid, status = os.waitpid(pid, 0)
             logger.info('Process ended, status=%r' % status)
             return
 
     @asyncio.coroutine
-    def start(self):
+    def run(self):
         try:
             # Connect read pipe to process
             read_transport, read_protocol = yield from loop.connect_read_pipe(
-                                lambda:SubProcessProtocol(self), self.shell_out)
+                                lambda:SubProcessProtocol(self.write_output), self.shell_out)
 
             # Run process in executor, wait for that to finish.
             yield from loop.run_in_executor(None, self._run)
@@ -289,8 +293,10 @@ class Pane(Container):
             logger.error('CRASH: ' + repr(e))
 
     def kill_process(self):
-        return
-        #self.process.kill()
+        """ Send SIGKILL to the process running in this pane. """
+        if self.process_id:
+            logger.info('Killing process %r' % self.process_id)
+            os.kill(self.process_id, signal.SIGKILL)
 
     def write_output(self, data):
         """ Write data received from the application into the pane and rerender. """
@@ -356,5 +362,5 @@ class Pane(Container):
         if mask:
             return mask
         else:
-            raise IMPOSSIBLE
+            raise Exception("This can't happen")
             #return CellPosition.Inside

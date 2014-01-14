@@ -4,6 +4,9 @@ import asyncio
 import fcntl
 import pyte
 import datetime
+from collections import namedtuple
+
+from pymux.utils import get_size
 
 from .log import logger
 from .panes import CellPosition, BorderType
@@ -11,6 +14,7 @@ from .invalidate import Redraw
 
 loop = asyncio.get_event_loop()
 
+RendererSize = namedtuple('RendererSize', 'x y')
 
 BorderSymbols = {
     BorderType.Join: '┼',
@@ -37,11 +41,12 @@ reverse_bgcolour_code = dict((v,k) for k,v in pyte.graphics.BG.items())
 
 
 class Renderer:
-    def __init__(self, client):
+    def __init__(self, client_ref):
         # Invalidate state
         self._invalidated = False
         self._invalidate_parts = 0
-        self.client = client
+        self.get_client = client_ref
+        self.invalidate()
 
     def invalidate(self, invalidate_parts=Redraw.All):
         """ Schedule repaint. """
@@ -51,6 +56,9 @@ class Renderer:
             logger.info('Scheduling repaint: %r' % self._invalidate_parts)
             self._invalidated = True
             loop.call_soon(self.repaint)
+
+    def get_size(self):
+        raise NotImplementedError
 
     def repaint(self):
         """ Do repaint now. """
@@ -83,6 +91,7 @@ class Renderer:
     def _repaint(self):
         data = []
         write = data.append
+        client = self.get_client()
 
 #        if self._invalidate_parts & Redraw.ClearFirst:
 #            write('\u001b[2J') # Erase screen
@@ -91,19 +100,23 @@ class Renderer:
         write('\033[?25l')
 
         # Draw panes.
-        if self._invalidate_parts & Redraw.Panes:
+        if self._invalidate_parts & Redraw.Panes and client.active_window:
             only_dirty = not bool(self._invalidate_parts & Redraw.ClearFirst)
             logger.info('Redraw panes')
-            for pane in self.client.panes:
+            for pane in client.active_window.panes:
                 data += self._repaint_pane(pane, only_dirty=only_dirty)
 
         # Draw borders
-        if self._invalidate_parts & Redraw.Borders:
+        if self._invalidate_parts & Redraw.Borders and client.active_window:
             logger.info('Redraw borders')
-            data += self._repaint_border()
+            data += self._repaint_border(client)
+
+        # Draw status bar
+        if self._invalidate_parts & Redraw.StatusBar:
+            data += self._repaint_status_bar(client)
 
         # Set cursor to right position (if visible.)
-        active_pane = self.client.active_pane
+        active_pane = client.active_pane
 
         if active_pane and not active_pane.screen.cursor.hidden:
             ypos, xpos = active_pane.cursor_position
@@ -121,23 +134,19 @@ class Renderer:
             else:
                 write('\033[?1l') # Reset
 
-        # Draw status bar
-        if self._invalidate_parts & Redraw.StatusBar:
-            data += self._repaint_status_bar()
-
         self._invalidate_parts = Redraw.Nothing
 
         return data
 
-    def _repaint_border(self):
+    def _repaint_border(self, client):
         data = []
         write = data.append
 
-        for y in range(0, self.client.layout.location.sy):
+        for y in range(0, client.sy - 1):
             write('\033[%i;%iH' % (y+1, 0))
 
-            for x in range(0, self.client.layout.location.sx):
-                border_type, is_active = self._check_cell(x, y)
+            for x in range(0, client.sx):
+                border_type, is_active = self._check_cell(client, x, y)
 
                 if border_type and border_type != BorderType.Inside:
                     write('\033[%i;%iH' % (y+1, x+1)) # XXX: we don't have to send this every time. Optimize.
@@ -150,12 +159,12 @@ class Renderer:
 
         return data
 
-    def _repaint_status_bar(self):
+    def _repaint_status_bar(self, client):
         data = []
         write = data.append
 
         # Go to bottom line
-        write('\033[%i;0H' % self.client.sy)
+        write('\033[%i;0H' % client.sy)
 
         # Set background
         write('\033[%im' % 43) # Brown
@@ -166,12 +175,12 @@ class Renderer:
         # Set bold
         write('\033[1m')
 
-        text = self.client.status_bar.left_text
-        rtext = self.client.status_bar.right_text
-        space_left = self.client.sx - len(text) - len(rtext)
+        text = client.status_bar.left_text
+        rtext = client.status_bar.right_text
+        space_left = client.sx - len(text) - len(rtext)
 
         text += ' ' * space_left + rtext
-        text = text[:self.client.sx]
+        text = text[:client.sx]
         write(text)
 
         return data
@@ -205,8 +214,11 @@ class Renderer:
 
 
                 for char in line:
-                    # If the bold/underscore/reverse parameters are reset. Always use global reset.
-                    if (last_bold and not char.bold) or (last_underscore and not char.underscore) or (last_reverse and not char.reverse):
+                    # If the bold/underscore/reverse parameters are reset.
+                    # Always use global reset.
+                    if (last_bold and not char.bold) or \
+                                        (last_underscore and not char.underscore) or \
+                                        (last_reverse and not char.reverse):
                         write('\033[0m')
 
                         last_fg = 'default'
@@ -248,7 +260,7 @@ class Renderer:
 
         return data
 
-    def _check_cell(self, x, y):
+    def _check_cell(self, client, x, y):
         """ For a given (x,y) cell, return the pane to which this belongs, and
         the type of border we have there.
 
@@ -258,19 +270,20 @@ class Renderer:
         mask = 0
         is_active = False
 
-        for pane in self.client.panes:
+        for pane in client.active_window.panes:
             border_type = pane._get_border_type(x, y)
 
             # If inside pane:
             if border_type == BorderType.Inside:
                 return border_type, False
-            assert CellPosition.Outside == 0
 
             mask |= border_type
-
-            is_active = is_active or (border_type and pane == self.client.active_pane)
-
-        #border_type = CellPositionToBorderType[mask]
+            is_active = is_active or (border_type and pane == client.active_pane)
 
         return mask, is_active
 
+
+class StdoutRenderer(Renderer):
+    def get_size(self):
+        y, x = get_size(sys.stdout)
+        return RendererSize(x, y)

@@ -1,5 +1,8 @@
 import os
 
+"""
+Some utilities that were taken from the pexpect source code.
+"""
 
 
 def pty_make_controlling_tty(tty_fd):

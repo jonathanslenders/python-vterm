@@ -6,7 +6,7 @@ class Redraw:
     Cursor = 1
     Borders = 2
     Panes = 4
-    StatusBar = 8
-    ClearFirst = 16
+    StatusBar = 16
+    ClearFirst = 32
 
     All = Cursor | Borders | Panes | StatusBar | ClearFirst
