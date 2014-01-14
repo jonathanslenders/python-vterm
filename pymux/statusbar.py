@@ -1,5 +1,6 @@
 import datetime
 
+
 class StatusBar:
     def __init__(self, get_client_func):
         self._get_client_func = get_client_func
@@ -14,9 +15,14 @@ class StatusBar:
         client = self._get_client_func()
 
         for w in client.windows:
-            if client.active_window == w:
-                result.append('[%s]' % id(w))
+            if w.active_pane:
+                name = 'pid=%s' % w.active_pane.process_id
             else:
-                result.append(' %s ' % id(w))
+                name = '(none)'
+
+            if client.active_window == w:
+                result.append('[%s]' % name)
+            else:
+                result.append(' %s ' % name)
 
         return ' '.join(result)
