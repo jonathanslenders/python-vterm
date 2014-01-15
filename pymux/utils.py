@@ -10,13 +10,14 @@ def get_size(stdout):
 
     :returns: A (rows, cols) tuple.
     """
-    assert stdout.isatty()
+    #assert stdout.isatty()
 
     # Buffer for the C call
     buf = array.array('h', [0, 0, 0, 0 ])
 
     # Do TIOCGWINSZ (Get)
-    fcntl.ioctl(stdout.fileno(), termios.TIOCGWINSZ, buf, True)
+    #fcntl.ioctl(stdout.fileno(), termios.TIOCGWINSZ, buf, True)
+    fcntl.ioctl(0, termios.TIOCGWINSZ, buf, True)
 
     # Return rows, cols
     return buf[0], buf[1]

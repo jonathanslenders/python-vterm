@@ -43,63 +43,52 @@ reverse_bgcolour_code = dict((v, k) for k, v in pyte.graphics.BG.items())
 class Renderer:
     def __init__(self, client_ref):
         # Invalidate state
-        self._invalidated = False
-        self._invalidate_parts = 0
-        self.get_client = client_ref
-        self.invalidate()
-
-    def invalidate(self, invalidate_parts=Redraw.All):
-        """ Schedule repaint. """
-        self._invalidate_parts |= invalidate_parts
-
-        if not self._invalidated:
-            logger.info('Scheduling repaint: %r' % self._invalidate_parts)
-            self._invalidated = True
-            loop.call_soon(self.repaint)
+        self.get_client = client_ref # TODO: rename to session_ref
 
     def get_size(self):
         raise NotImplementedError
 
+    @asyncio.coroutine
     def _write_output(self, data):
         raise NotImplementedError
 
-    def repaint(self):
+    @asyncio.coroutine
+    def repaint(self, invalidated_parts):
         """ Do repaint now. """
-        self._invalidated = False
         start = datetime.datetime.now()
 
         # Build and write output
-        data = ''.join(self._repaint())
-        self._write_output(data)
+        data = ''.join(self._repaint(invalidated_parts))
+        yield from self._write_output(data) # TODO: make _write_output asynchronous.
 
         logger.info('Redraw generation done in %ss, bytes=%i' %
                 (datetime.datetime.now() - start, len(data)))
 
-    def _repaint(self):
+    def _repaint(self, invalidated_parts):
         data = []
         write = data.append
         client = self.get_client()
 
-#        if self._invalidate_parts & Redraw.ClearFirst:
-#            write('\u001b[2J') # Erase screen
+        if invalidated_parts & Redraw.ClearFirst:
+            write('\u001b[2J') # Erase screen
 
         # Hide cursor
         write('\033[?25l')
 
         # Draw panes.
-        if self._invalidate_parts & Redraw.Panes and client.active_window:
-            only_dirty = not bool(self._invalidate_parts & Redraw.ClearFirst)
+        if invalidated_parts & Redraw.Panes and client.active_window:
+            only_dirty = not bool(invalidated_parts & Redraw.ClearFirst)
             logger.info('Redraw panes')
             for pane in client.active_window.panes:
                 data += self._repaint_pane(pane, only_dirty=only_dirty)
 
         # Draw borders
-        if self._invalidate_parts & Redraw.Borders and client.active_window:
+        if invalidated_parts & Redraw.Borders and client.active_window:
             logger.info('Redraw borders')
             data += self._repaint_border(client)
 
         # Draw status bar
-        if self._invalidate_parts & Redraw.StatusBar:
+        if invalidated_parts & Redraw.StatusBar:
             data += self._repaint_status_bar(client)
 
         # Set cursor to right position (if visible.)
@@ -121,7 +110,7 @@ class Renderer:
             else:
                 write('\033[?1l') # Reset
 
-        self._invalidate_parts = Redraw.Nothing
+        invalidated_parts = Redraw.Nothing
 
         return data
 
@@ -243,7 +232,6 @@ class Renderer:
                         last_reverse = char.reverse
 
                     write(char.data)
-        pane.screen.dirty = set()
 
         return data
 
@@ -270,10 +258,27 @@ class Renderer:
         return mask, is_active
 
 
+class PipeRenderer(Renderer):
+    def __init__(self, session_ref, write_func):
+        super().__init__(session_ref)
+        self._write_func = write_func
+
+    @asyncio.coroutine
+    def _write_output(self, data):
+        logger.info('BEFORE')
+        self._write_func(data.encode('utf-8'))
+        logger.info('AFTER')
+
+    def get_size(self):
+        y, x = get_size(sys.stdout)
+        return RendererSize(x, y)
+
+
 class StdoutRenderer(Renderer):
     """
     Renderer which is connected to sys.stdout.
     """
+    @asyncio.coroutine
     def _write_output(self, data):
         # Make sure that stdout is blocking when we write to it.  By calling
         # connect_read_pipe on stdin, asyncio will mark the stdin as non
@@ -303,15 +308,15 @@ class AmpRenderer(Renderer):
     """
     Renderer which sends the stdout over AMP to the client.
     """
-    def __init__(self, client_ref, amp_protocol):
-        super().__init__(client_ref)
+    def __init__(self, session_ref, amp_protocol):
+        super().__init__(session_ref)
         self.amp_protocol = amp_protocol
-        self.sx = 80
-        self.sy = 40
 
+    @asyncio.coroutine
     def _write_output(self, data):
-        self.amp_protocol.call_remote(WriteOutput, data=data)
+        yield from self.amp_protocol.send_output_to_client(data)
 
     def get_size(self):
-        # This is sychronous. We take the last known size here.
-        return RendererSize(self.sx, self.sy)
+        return RendererSize(
+                self.amp_protocol.client_width,
+                self.amp_protocol.client_height)

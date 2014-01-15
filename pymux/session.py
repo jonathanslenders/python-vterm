@@ -8,6 +8,7 @@ import weakref
 
 from .log import logger
 
+loop = asyncio.get_event_loop()
 
 class Session:
     def __init__(self):
@@ -15,16 +16,53 @@ class Session:
         self.windows = [ ]
         self.active_window = None
 
+        self._invalidated = False
+        self._invalidate_parts = 0
+
         self.pane_runners = [ ] # Futures
 
         self.status_bar = StatusBar(weakref.ref(self))
         self.create_new_window()
 
+        self.invalidate()
+
+    def invalidate(self, invalidate_parts=Redraw.All):
+        """ Schedule repaint. """
+        self._invalidate_parts |= invalidate_parts
+
+        if not self._invalidated:
+            logger.info('Scheduling repaint: %r' % self._invalidate_parts)
+            self._invalidated = True
+            loop.call_soon(lambda: asyncio.async(self.repaint()))
+
+    def repaint(self):
+        parts = self._invalidate_parts
+        self._invalidate_parts = 0
+
+        for r in self.renderers:
+            yield from r.repaint(parts)
+
+        if self.active_window:
+            for pane in self.active_window.panes:
+                pane.screen.dirty = set()
+                    # XXX: this is not entirely correct. We should have frozen the
+                    # set before rendering
+
+        # Reschedule again, if something changed while rendering in the
+        # meantime.
+        self._invalidated = False
+        if self._invalidate_parts:
+            self.invalidate(self._invalidate_parts)
+
     def add_renderer(self, renderer):
         """ Create a renderer for this client. """
         self.renderers.append(renderer)
         self.update_size()
-        return renderer
+        return renderer # TODO: remove return statement
+
+    def remove_renderer(self, renderer):
+        self.renderers.remove(renderer)
+        self.update_size()
 
     @property
     def active_pane(self):
@@ -48,9 +86,9 @@ class Session:
 
         self.invalidate(Redraw.All)
 
-    def invalidate(self, *a):
-        for r in self.renderers:
-            r.invalidate(*a)
+    #def invalidate(self, *a):
+    #    for r in self.renderers:
+    #        r.invalidate(*a)
 
     def update_size(self):
         """
