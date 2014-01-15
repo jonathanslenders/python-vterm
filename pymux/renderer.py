@@ -36,8 +36,8 @@ BorderSymbols = {
     BorderType.Outside: 'x',
 }
 
-reverse_colour_code = dict((v,k) for k,v in pyte.graphics.FG.items())
-reverse_bgcolour_code = dict((v,k) for k,v in pyte.graphics.BG.items())
+reverse_colour_code = dict((v, k) for k, v in pyte.graphics.FG.items())
+reverse_bgcolour_code = dict((v, k) for k, v in pyte.graphics.BG.items())
 
 
 class Renderer:
@@ -60,33 +60,20 @@ class Renderer:
     def get_size(self):
         raise NotImplementedError
 
+    def _write_output(self, data):
+        raise NotImplementedError
+
     def repaint(self):
         """ Do repaint now. """
         self._invalidated = False
         start = datetime.datetime.now()
 
-        # Make sure that stdout is blocking when we write to it.  By calling
-        # connect_read_pipe on stdin, asyncio will mark the stdin as non
-        # blocking (in asyncio.unix_events._set_nonblocking). This causes
-        # stdout to be nonblocking as well.  That's fine, but it's never a good
-        # idea to write to a non blocking stdout, as it will often raise the
-        # "write could not complete without blocking" error and not write to
-        # stdout.
-        fd = sys.stdout.fileno()
-        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-        new_flags = flags & ~ os.O_NONBLOCK
-        fcntl.fcntl(fd, fcntl.F_SETFL, new_flags)
+        # Build and write output
+        data = ''.join(self._repaint())
+        self._write_output(data)
 
-        try:
-            data = ''.join(self._repaint())
-            sys.stdout.write(data)
-            sys.stdout.flush()
-
-            logger.info('Redraw generation done in %ss, bytes=%i' %
-                    (datetime.datetime.now() - start, len(data)))
-        finally:
-            # Make blocking again
-            fcntl.fcntl(fd, fcntl.F_SETFL, flags)
+        logger.info('Redraw generation done in %ss, bytes=%i' %
+                (datetime.datetime.now() - start, len(data)))
 
     def _repaint(self):
         data = []
@@ -284,6 +271,47 @@ class Renderer:
 
 
 class StdoutRenderer(Renderer):
+    """
+    Renderer which is connected to sys.stdout.
+    """
+    def _write_output(self, data):
+        # Make sure that stdout is blocking when we write to it.  By calling
+        # connect_read_pipe on stdin, asyncio will mark the stdin as non
+        # blocking (in asyncio.unix_events._set_nonblocking). This causes
+        # stdout to be nonblocking as well.  That's fine, but it's never a good
+        # idea to write to a non blocking stdout, as it will often raise the
+        # "write could not complete without blocking" error and not write to
+        # stdout.
+        fd = sys.stdout.fileno()
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        new_flags = flags & ~ os.O_NONBLOCK
+        fcntl.fcntl(fd, fcntl.F_SETFL, new_flags)
+
+        try:
+            sys.stdout.write(data)
+            sys.stdout.flush()
+        finally:
+            # Make blocking again
+            fcntl.fcntl(fd, fcntl.F_SETFL, flags)
+
     def get_size(self):
         y, x = get_size(sys.stdout)
         return RendererSize(x, y)
+
+
+class AmpRenderer(Renderer):
+    """
+    Renderer which sends the stdout over AMP to the client.
+    """
+    def __init__(self, client_ref, amp_protocol):
+        super().__init__(client_ref)
+        self.amp_protocol = amp_protocol
+        self.sx = 80
+        self.sy = 40
+
+    def _write_output(self, data):
+        self.amp_protocol.call_remote(WriteOutput, data=data)
+
+    def get_size(self):
+        # This is sychronous. We take the last known size here.
+        return RendererSize(self.sx, self.sy)
