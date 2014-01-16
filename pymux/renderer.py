@@ -44,6 +44,7 @@ class Renderer:
     def __init__(self, client_ref):
         # Invalidate state
         self.get_client = client_ref # TODO: rename to session_ref
+        self._last_size = None
 
     def get_size(self):
         raise NotImplementedError
@@ -87,6 +88,10 @@ class Renderer:
         if invalidated_parts & Redraw.Borders and client.active_window:
             logger.info('Redraw borders')
             data += self._repaint_border(client)
+
+        # Draw background.
+        if invalidated_parts & Redraw.ClearFirst or self._last_size != self.get_size():
+            data += self._repaint_background(client)
 
         # Draw status bar
         if invalidated_parts & Redraw.StatusBar:
@@ -136,12 +141,36 @@ class Renderer:
 
         return data
 
+    def _repaint_background(self, client):
+        data = []
+        size = self.get_size()
+
+        # Only redraw background when the size has been changed.
+        write = data.append
+
+        write('\033[37m') # white fg
+        write('\033[43m') # yellow bg
+        width, height = size
+
+        sx = client.sx
+        sy = client.sy
+
+        for y in range(0, height - 1):
+            for x in range(0, width):
+                if x >= sx or y >= sy:
+                    write('\033[%i;%iH.' % (y+1, x+1))
+
+        self._last_size = size
+        return data
+
     def _repaint_status_bar(self, client):
         data = []
         write = data.append
 
+        width, height = self.get_size()
+
         # Go to bottom line
-        write('\033[%i;0H' % client.sy)
+        write('\033[%i;0H' % height)
 
         # Set background
         write('\033[%im' % 43) # Brown
@@ -154,10 +183,11 @@ class Renderer:
 
         text = client.status_bar.left_text
         rtext = client.status_bar.right_text
-        space_left = client.sx - len(text) - len(rtext)
+        space_left = width - len(text) - len(rtext)
+        logger.info('WIDTH=%r ' %  width)
 
         text += ' ' * space_left + rtext
-        text = text[:client.sx]
+        text = text[:width]
         write(text)
 
         return data

@@ -4,10 +4,11 @@ from pymux.panes import Pane
 
 
 class Window:
-    def __init__(self, invalidate_func):
+    def __init__(self, pane_executor, invalidate_func):
         self.layout = TileContainer()
         self.active_pane = None
         self.invalidate = invalidate_func
+        self.pane_executor = pane_executor
         self.name = '' # TODO
         self.panes = []
 
@@ -15,7 +16,8 @@ class Window:
         """
         Split the current window and create a new Pane instance.
         """
-        pane = Pane(command, lambda: self.invalidate(Redraw.Panes))
+        pane = Pane(self.pane_executor, command,
+                        lambda: self.invalidate(Redraw.Panes))
 
         if self.active_pane:
             parent = self.active_pane.parent

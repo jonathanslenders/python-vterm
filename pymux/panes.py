@@ -570,9 +570,11 @@ class AlternateScreen(pyte.DiffScreen):
 
 
 class Pane(Container):
-    def __init__(self, command='/usr/bin/vim', invalidate_callback=None):
+    def __init__(self, pane_executor, command='/usr/bin/vim',
+                                invalidate_callback=None):
         super().__init__()
 
+        self.pane_executor = pane_executor
         self.invalidate = invalidate_callback
         self.command = command
 
@@ -637,7 +639,6 @@ class Pane(Container):
         if pid == 0: # TODO: <0 is fail
             os.close(self.master)
 
-            pty_make_controlling_tty
             pty_make_controlling_tty(self.slave)
 
             # In the fork, set the stdin/out/err to our slave pty.
@@ -674,7 +675,7 @@ class Pane(Container):
                                 lambda:SubProcessProtocol(self.write_output), self.shell_out)
 
             # Run process in executor, wait for that to finish.
-            yield from loop.run_in_executor(None, self._run)
+            yield from loop.run_in_executor(self.pane_executor, self._run)
 
             # Set finished.
             self.finished = True # TODO: close pseudo terminal.

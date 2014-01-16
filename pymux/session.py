@@ -6,6 +6,7 @@ from collections import defaultdict
 
 import asyncio
 import weakref
+import concurrent
 
 from .log import logger
 
@@ -13,11 +14,14 @@ loop = asyncio.get_event_loop()
 
 from pyte.screens import Char
 
+MAX_WORKERS = 1024 # Max number of threads for the pane runners.
+
 class Session:
     def __init__(self):
         self.renderers = []
         self.windows = [ ]
         self.active_window = None
+        self.pane_executor = concurrent.futures.ThreadPoolExecutor(1024)
 
         self._last_char_buffers = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: Char)))
 
@@ -30,6 +34,7 @@ class Session:
         self.create_new_window()
 
         self.invalidate()
+
 
     def invalidate(self, invalidate_parts=Redraw.All):
         """ Schedule repaint. """
@@ -96,7 +101,7 @@ class Session:
             if window == self.active_window:
                 self.invalidate(*a)
 
-        window = Window(invalidate_func)
+        window = Window(self.pane_executor, invalidate_func)
         pane = window.create_new_pane()
         self.active_window = window
         self.windows.append(window)
