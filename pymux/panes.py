@@ -115,10 +115,8 @@ class BetterScreen(pyte.Screen):
             'cursor', ]
 
     def __init__(self, lines, columns):
-        self.buffer = defaultdict(lambda: defaultdict(Char))
         self.lines = lines
         self.columns = columns
-        self.line_offset = 0 # Index of the line that's currently displayed on top.
         self.reset()
 
     def __before__(self, command):
@@ -129,6 +127,8 @@ class BetterScreen(pyte.Screen):
         self.buffer = defaultdict(lambda: defaultdict(lambda: Char(data=' ')))
         self.mode = set([mo.DECAWM, mo.DECTCEM])
         self.margins = Margins(0, self.lines - 1)
+
+        self.line_offset = 0 # Index of the line that's currently displayed on top.
 
         # According to VT220 manual and ``linux/drivers/tty/vt.c``
         # the default G0 charset is latin-1, but for reasons unknown
@@ -144,6 +144,28 @@ class BetterScreen(pyte.Screen):
 
         self.cursor = Cursor(0, 0)
         self.cursor_position()
+
+    def dump_character_diff(self, previous_dump):
+        """
+        Create a copy of the visible buffer.
+        """
+        space = Char(data=' ')
+        result = defaultdict(lambda: defaultdict(lambda: Char(data=' ')))
+        offset = self.line_offset
+
+        def chars_eq(c1, c2):
+            return c1 == c2 #or (c1.data == ' ' and c2.data == ' ') # TODO: unless they have a background or underline, etc...
+
+        for y in range(0, self.lines):
+            line = self.buffer[y + offset]
+
+            for x in range(0, self.columns):
+                char = line.get(x, space)
+                #if not previous_dump or previous_dump[y][x] != char:
+                if not (previous_dump and chars_eq(previous_dump[y][x], char)):
+                    result[y][x] = char
+
+        return result
 
     def resize(self, lines=None, columns=None):
         # don't do anything except saving the dimensions

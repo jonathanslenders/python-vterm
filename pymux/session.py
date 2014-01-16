@@ -2,6 +2,7 @@ from pymux.invalidate import Redraw
 from pymux.layout import Location
 from pymux.statusbar import StatusBar
 from pymux.window import Window
+from collections import defaultdict
 
 import asyncio
 import weakref
@@ -10,11 +11,15 @@ from .log import logger
 
 loop = asyncio.get_event_loop()
 
+from pyte.screens import Char
+
 class Session:
     def __init__(self):
         self.renderers = []
         self.windows = [ ]
         self.active_window = None
+
+        self._last_char_buffers = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: Char)))
 
         self._invalidated = False
         self._invalidate_parts = 0
@@ -37,18 +42,31 @@ class Session:
 
     def repaint(self):
         parts = self._invalidate_parts
+
+        if not self.active_window:
+            char_diffs = { }
+        else:
+            # Dump diffs for visible panes
+            def get_previous_dump(pane):
+                if self._invalidate_parts & Redraw.ClearFirst:
+                    return None
+                else:
+                    return self._last_char_buffers[pane]
+
+            char_diffs = {
+                pane:pane.screen.dump_character_diff(get_previous_dump(pane))
+                for pane in self.active_window.panes }
+
         self._invalidate_parts = 0
 
-		# XXX: freeze panes here. (deep copy buffers)
-
         for r in self.renderers:
-            yield from r.repaint(parts)
+            yield from r.repaint(parts, char_diffs)
 
-   #     if self.active_window:
-   #         for pane in self.active_window.panes:
-   #             pane.screen.dirty = set()
-   #                 # XXX: this is not entirely correct. We should have frozen the
-   #                 # set before rendering
+        # Apply diffs
+        for pane, diff in char_diffs.items():
+            for y, line_data in diff.items():
+                for x, char in line_data.items():
+                    self._last_char_buffers[pane][y][x] = char
 
         # Reschedule again, if something changed while rendering in the
         # meantime.
@@ -87,10 +105,6 @@ class Session:
         self.update_size()
 
         self.invalidate(Redraw.All)
-
-    #def invalidate(self, *a):
-    #    for r in self.renderers:
-    #        r.invalidate(*a)
 
     def update_size(self):
         """

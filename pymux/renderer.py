@@ -53,18 +53,19 @@ class Renderer:
         raise NotImplementedError
 
     @asyncio.coroutine
-    def repaint(self, invalidated_parts):
+    def repaint(self, invalidated_parts, char_buffers):
         """ Do repaint now. """
         start = datetime.datetime.now()
 
         # Build and write output
-        data = ''.join(self._repaint(invalidated_parts))
+        data = ''.join(self._repaint(invalidated_parts, char_buffers))
         yield from self._write_output(data) # TODO: make _write_output asynchronous.
 
+        logger.info('Bytes: %r' % data)
         logger.info('Redraw generation done in %ss, bytes=%i' %
                 (datetime.datetime.now() - start, len(data)))
 
-    def _repaint(self, invalidated_parts):
+    def _repaint(self, invalidated_parts, char_buffers):
         data = []
         write = data.append
         client = self.get_client()
@@ -80,7 +81,7 @@ class Renderer:
             only_dirty = not bool(invalidated_parts & Redraw.ClearFirst)
             logger.info('Redraw panes')
             for pane in client.active_window.panes:
-                data += self._repaint_pane(pane, only_dirty=only_dirty)
+                data += self._repaint_pane(pane, only_dirty=only_dirty, char_buffer=char_buffers[pane])
 
         # Draw borders
         if invalidated_parts & Redraw.Borders and client.active_window:
@@ -161,7 +162,7 @@ class Renderer:
 
         return data
 
-    def _repaint_pane(self, pane, only_dirty=True):
+    def _repaint_pane(self, pane, only_dirty=True, char_buffer=None): # TODO: remove only_dirty
         data = []
         write = data.append
 
@@ -170,17 +171,19 @@ class Renderer:
         last_bold = False
         last_underscore = False
         last_reverse = False
+        last_pos = (-10, -10)
 
         write('\033[0m')
 
-        # Calculate the vertical scroll offset.
-        offset = pane.screen.line_offset
-
-        for line_index in range(0, pane.screen.lines):
-            for column_index in range(0, pane.screen.columns):
-                char = pane.screen.buffer[line_index + offset][column_index]
-
-                write('\033[%i;%iH' % (pane.py + line_index + 1, pane.px + column_index + 1))
+        for line_index, line_data in char_buffer.items():
+            for column_index, char in line_data.items():
+                # Only send position when it it's not next to the last one.
+                if (line_index, column_index + pane.px) == (last_pos[0] + 1, 0):
+                    write('\r\n') # Optimization for the next line
+                elif (line_index, column_index) != (last_pos[0], last_pos[1] + 1):
+                    write('\033[%i;%iH' % (pane.py + line_index + 1, pane.px + column_index + 1))
+                                # TODO: also optimize if the last skipped character is a space.
+                last_pos = (line_index, column_index)
 
                 # If the bold/underscore/reverse parameters are reset.
                 # Always use global reset.
@@ -264,34 +267,34 @@ class PipeRenderer(Renderer):
         return RendererSize(x, y)
 
 
-class StdoutRenderer(Renderer):
-    """
-    Renderer which is connected to sys.stdout.
-    """
-    @asyncio.coroutine
-    def _write_output(self, data):
-        # Make sure that stdout is blocking when we write to it.  By calling
-        # connect_read_pipe on stdin, asyncio will mark the stdin as non
-        # blocking (in asyncio.unix_events._set_nonblocking). This causes
-        # stdout to be nonblocking as well.  That's fine, but it's never a good
-        # idea to write to a non blocking stdout, as it will often raise the
-        # "write could not complete without blocking" error and not write to
-        # stdout.
-        fd = sys.stdout.fileno()
-        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-        new_flags = flags & ~ os.O_NONBLOCK
-        fcntl.fcntl(fd, fcntl.F_SETFL, new_flags)
-
-        try:
-            sys.stdout.write(data)
-            sys.stdout.flush()
-        finally:
-            # Make blocking again
-            fcntl.fcntl(fd, fcntl.F_SETFL, flags)
-
-    def get_size(self):
-        y, x = get_size(sys.stdout)
-        return RendererSize(x, y)
+## class StdoutRenderer(Renderer):
+##     """
+##     Renderer which is connected to sys.stdout.
+##     """
+##     @asyncio.coroutine
+##     def _write_output(self, data):
+##         # Make sure that stdout is blocking when we write to it.  By calling
+##         # connect_read_pipe on stdin, asyncio will mark the stdin as non
+##         # blocking (in asyncio.unix_events._set_nonblocking). This causes
+##         # stdout to be nonblocking as well.  That's fine, but it's never a good
+##         # idea to write to a non blocking stdout, as it will often raise the
+##         # "write could not complete without blocking" error and not write to
+##         # stdout.
+##         fd = sys.stdout.fileno()
+##         flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+##         new_flags = flags & ~ os.O_NONBLOCK
+##         fcntl.fcntl(fd, fcntl.F_SETFL, new_flags)
+##
+##         try:
+##             sys.stdout.write(data)
+##             sys.stdout.flush()
+##         finally:
+##             # Make blocking again
+##             fcntl.fcntl(fd, fcntl.F_SETFL, flags)
+##
+##     def get_size(self):
+##         y, x = get_size(sys.stdout)
+##         return RendererSize(x, y)
 
 
 class AmpRenderer(Renderer):
