@@ -112,7 +112,9 @@ class BetterScreen(pyte.Screen):
             'g0_charset',
             'g1_charset',
             'tabstops',
-            'cursor', ]
+            'cursor',
+            'line_offset',
+            ]
 
     def __init__(self, lines, columns):
         self.lines = lines
@@ -157,7 +159,11 @@ class BetterScreen(pyte.Screen):
             return c1 == c2 #or (c1.data == ' ' and c2.data == ' ') # TODO: unless they have a background or underline, etc...
 
         for y in range(0, self.lines):
-            line = self.buffer[y + offset]
+            if (y + offset) in self.buffer:
+                line = self.buffer[y + offset]
+            else:
+                # Empty line
+                line = defaultdict(lambda: Char(data=' '))
 
             for x in range(0, self.columns):
                 char = line.get(x, space)
@@ -169,9 +175,21 @@ class BetterScreen(pyte.Screen):
 
     def resize(self, lines=None, columns=None):
         # don't do anything except saving the dimensions
-        self.lines = lines
-        self.columns = columns # TODO: recalculate offset?
+        self.lines = lines if lines is not None else self.lines
+        self.columns = columns if columns is not None else self.columns
+        self._reset_offset_and_margins()
+
+    def _reset_offset_and_margins(self):
+        """
+        Recalculate offset and move cursor (make sure that the bottom is
+        visible.)
+        """
         self.margins = Margins(0, self.lines - 1)
+
+        if self.buffer:
+            new_line_offset = max(0, max(self.buffer.keys()) - self.lines + 4)
+            self.cursor.y += (self.line_offset - new_line_offset)
+            self.line_offset = new_line_offset # TODO: maybe put this in a scroll_offset function.
 
     def set_mode(self, *modes, **kwargs):
         # Private mode codes are shifted, to be distingiushed from non
@@ -211,6 +229,7 @@ class BetterScreen(pyte.Screen):
             self._original_screen_vars = \
                 { v:getattr(self, v) for v in self.swap_variables }
             self.reset()
+            self._reset_offset_and_margins()
 
     def reset_mode(self, *modes, **kwargs):
         # Private mode codes are shifted, to be distingiushed from non
@@ -247,6 +266,7 @@ class BetterScreen(pyte.Screen):
 
             self._original_screen = None
             self._original_screen_vars = {}
+            self._reset_offset_and_margins()
 
     def draw(self, char):
         # Translating a given character.
@@ -489,87 +509,89 @@ class BetterScreen(pyte.Screen):
         # See tmux/input.c, line: 1388
 
 
-class AlternateScreen(pyte.DiffScreen):
-    """
-    DiffScreen which also implements the alternate screen buffer like Xterm.
-    """
-    swap_variables = [
-            'mode',
-            'margins',
-            'charset',
-            'g0_charset',
-            'g1_charset',
-            'tabstops',
-            'cursor', ]
-
-    def __init__(self, *args):
-        super().__init__(*args)
-        self._original_screen = None
-
-    def set_mode(self, *modes, **kwargs):
-        # On "\e[?1049h", enter alternate screen mode. Backup the current state,
-        if 1049 in modes:
-            self._original_screen = self.buffer[:]
-            self._original_screen_vars = \
-                { v:getattr(self, v) for v in self.swap_variables }
-            self.reset()
-
-        super().set_mode(*modes, **kwargs)
-
-    def reset_mode(self, *modes, **kwargs):
-        # On "\e[?1049l", restore from alternate screen mode.
-        if 1049 in modes and self._original_screen:
-            for k, v in self._original_screen_vars.items():
-                setattr(self, k, v)
-            self.buffer[:] = self._original_screen
-
-            self._original_screen = None
-            self._original_screen_vars = {}
-            self.dirty.update(range(self.lines))
-
-        super().reset_mode(*modes, **kwargs)
-
-    def select_graphic_rendition(self, *attrs):
-        """ Support 256 colours """
-        g = pyte.graphics
-        replace = {}
-
-        if not attrs:
-            attrs = [0]
-        else:
-            attrs = list(attrs[::-1])
-
-        while attrs:
-            attr = attrs.pop()
-
-            if attr in g.FG:
-                replace["fg"] = g.FG[attr]
-            elif attr in g.BG:
-                replace["bg"] = g.BG[attr]
-            elif attr in g.TEXT:
-                attr = g.TEXT[attr]
-                replace[attr[1:]] = attr.startswith("+")
-            elif not attr:
-                replace = self.default_char._asdict()
-
-            elif attr in (38, 48):
-                n = attrs.pop()
-                if n != 5:
-                    continue
-
-                if attr == 38:
-                    m = attrs.pop()
-                    replace["fg"] = 1024 + m
-                elif attr == 48:
-                    m = attrs.pop()
-                    replace["bg"] = 1024 + m
-
-        self.cursor.attrs = self.cursor.attrs._replace(**replace)
-
-        # See tmux/input.c, line: 1388
+#class AlternateScreen(pyte.DiffScreen):
+#    """
+#    DiffScreen which also implements the alternate screen buffer like Xterm.
+#    """
+#    swap_variables = [
+#            'mode',
+#            'margins',
+#            'charset',
+#            'g0_charset',
+#            'g1_charset',
+#            'tabstops',
+#            'cursor', ]
+#
+#    def __init__(self, *args):
+#        super().__init__(*args)
+#        self._original_screen = None
+#
+#    def set_mode(self, *modes, **kwargs):
+#        # On "\e[?1049h", enter alternate screen mode. Backup the current state,
+#        if 1049 in modes:
+#            self._original_screen = self.buffer[:]
+#            self._original_screen_vars = \
+#                { v:getattr(self, v) for v in self.swap_variables }
+#            self.reset()
+#
+#        super().set_mode(*modes, **kwargs)
+#
+#    def reset_mode(self, *modes, **kwargs):
+#        # On "\e[?1049l", restore from alternate screen mode.
+#        if 1049 in modes and self._original_screen:
+#            for k, v in self._original_screen_vars.items():
+#                setattr(self, k, v)
+#            self.buffer[:] = self._original_screen
+#
+#            self._original_screen = None
+#            self._original_screen_vars = {}
+#            self.dirty.update(range(self.lines))
+#
+#        super().reset_mode(*modes, **kwargs)
+#
+#    def select_graphic_rendition(self, *attrs):
+#        """ Support 256 colours """
+#        g = pyte.graphics
+#        replace = {}
+#
+#        if not attrs:
+#            attrs = [0]
+#        else:
+#            attrs = list(attrs[::-1])
+#
+#        while attrs:
+#            attr = attrs.pop()
+#
+#            if attr in g.FG:
+#                replace["fg"] = g.FG[attr]
+#            elif attr in g.BG:
+#                replace["bg"] = g.BG[attr]
+#            elif attr in g.TEXT:
+#                attr = g.TEXT[attr]
+#                replace[attr[1:]] = attr.startswith("+")
+#            elif not attr:
+#                replace = self.default_char._asdict()
+#
+#            elif attr in (38, 48):
+#                n = attrs.pop()
+#                if n != 5:
+#                    continue
+#
+#                if attr == 38:
+#                    m = attrs.pop()
+#                    replace["fg"] = 1024 + m
+#                elif attr == 48:
+#                    m = attrs.pop()
+#                    replace["bg"] = 1024 + m
+#
+#        self.cursor.attrs = self.cursor.attrs._replace(**replace)
+#
+#        # See tmux/input.c, line: 1388
 
 
 class Pane(Container):
+    _counter = 0
+
     def __init__(self, pane_executor, command='/usr/bin/vim',
                                 invalidate_callback=None):
         super().__init__()
@@ -588,11 +610,8 @@ class Pane(Container):
 
         self.location = Location(self.py, self.py, self.sx, self.sy)
 
-        # Create output stream.
-        #self.screen = pyte.DiffScreen(self.sx, self.sy)
-    #    self.screen = AlternateScreen(self.sx, self.sy)
+        # Create output stream and attach to screen
         self.screen = BetterScreen(self.sx, self.sy)
-
         self.stream = pyte.Stream()
         self.stream.attach(self.screen)
 
@@ -608,6 +627,13 @@ class Pane(Container):
         # Finished
         self.finished = False
         self.process_id = None
+
+        self.id = self._next_id()
+
+    @classmethod
+    def _next_id(cls):
+        cls._counter += 1
+        return cls._counter
 
     @property
     def panes(self):

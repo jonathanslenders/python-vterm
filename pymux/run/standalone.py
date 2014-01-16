@@ -49,12 +49,10 @@ def run():
     output_transport.write(b'\033[?1049l')
     output_transport.write(b'\033[?25h')
 
+def start_standalone():
+    with raw_mode(sys.stdin.fileno()):
+        loop.run_until_complete(run())
+
 
 if __name__ == '__main__':
-    with raw_mode(sys.stdin.fileno()):
-        try:
-            loop.run_until_complete(run())
-        except Exception as e:
-            logger.error('Error')
-            logger.error(repr(e))
-        logger.info('Normal Quit')
+    start_standalone()

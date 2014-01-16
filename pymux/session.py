@@ -35,7 +35,6 @@ class Session:
 
         self.invalidate()
 
-
     def invalidate(self, invalidate_parts=Redraw.All):
         """ Schedule repaint. """
         self._invalidate_parts |= invalidate_parts

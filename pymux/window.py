@@ -4,6 +4,8 @@ from pymux.panes import Pane
 
 
 class Window:
+    _counter = 0
+
     def __init__(self, pane_executor, invalidate_func):
         self.layout = TileContainer()
         self.active_pane = None
@@ -11,6 +13,12 @@ class Window:
         self.pane_executor = pane_executor
         self.name = '' # TODO
         self.panes = []
+        self.id = self._next_id()
+
+    @classmethod
+    def _next_id(cls):
+        cls._counter += 1
+        return cls._counter
 
     def create_new_pane(self, command='/bin/bash', vsplit=False):
         """

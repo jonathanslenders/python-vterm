@@ -1,25 +1,28 @@
 #!/usr/bin/env python
 
 from asyncio.protocols import BaseProtocol
-from asyncio.protocols import BaseProtocol
-from pymux.amp_commands import WriteOutput, SendKeyStrokes, GetSessions, SetSize, DetachClient
+
+from pymux.amp_commands import WriteOutput, SendKeyStrokes, GetSessions, SetSize, DetachClient, AttachClient
 from pymux.session import Session
+from pymux.std import raw_mode
 from pymux.utils import get_size
 
 import asyncio
-import signal
 import asyncio_amp
 import os
-from pymux.std import raw_mode
+import signal
 import sys
+
+__all__ = ('start_client', )
 
 loop = asyncio.get_event_loop()
 
 
 class ClientProtocol(asyncio_amp.AMPProtocol):
-    def __init__(self, write_func):
+    def __init__(self, output_transport):
         super().__init__()
-        self._write = write_func
+        self._output_transport = output_transport
+        self._write = output_transport.write
 
     def connection_made(self, transport):
         super().connection_made(transport)
@@ -31,6 +34,7 @@ class ClientProtocol(asyncio_amp.AMPProtocol):
 
     @DetachClient.responder
     def _detach_client(self):
+        # Wait for the loop to finish all writes
         loop.stop()
 
     def send_input(self, data):
@@ -50,13 +54,16 @@ class InputProtocol(BaseProtocol):
 
 
 @asyncio.coroutine
-def run():
+def _run():
     output_transport, output_protocol = yield from loop.connect_write_pipe(
                     BaseProtocol, os.fdopen(0, 'wb', 0))
 
     # Establish server connection
     transport, protocol = yield from loop.create_connection(
-                    lambda:ClientProtocol(output_transport.write), 'localhost', 4376)
+                    lambda:ClientProtocol(output_transport), 'localhost', 4376)
+
+    # Tell the server that we want to attach to the session
+    yield from protocol.call_remote(AttachClient)
 
     # Input
     input_transport, input_protocol = yield from loop.connect_read_pipe(
@@ -68,10 +75,23 @@ def run():
     signal.signal(signal.SIGWINCH, sigwinch_handler)
 
 
-if __name__ == '__main__':
+def start_client():
+    # Enter alternate screen buffer
+    sys.stdout.write('\033[?1049h')
+    sys.stdout.flush()
+
+    # Run client event loop in raw mode
     with raw_mode(0):
-        sys.stdout.write('\033[?1049h') # Enter alternate screen buffer
-        loop.run_until_complete(run())
+        loop.run_until_complete(_run())
         loop.run_forever()
-        sys.stdout.write('\033[?1049l') # Quit alternate screen buffer
-        sys.stdout.write('\033[?25h') # Make sure the cursor is visible again.
+
+    # Quit alternate screen buffer. (need to reopen stdout, because it was set
+    # non blocking by asynio)
+    out = os.fdopen(0, 'wb', 0)
+    out.write(b'\033[?25h') # Make sure the cursor is visible again.
+    out.write(b'\033[?1049l') # Quit alternate screen buffer
+    out.flush()
+
+
+if __name__ == '__main__':
+    start_client()

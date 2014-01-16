@@ -62,7 +62,7 @@ class Renderer:
         data = ''.join(self._repaint(invalidated_parts, char_buffers))
         yield from self._write_output(data) # TODO: make _write_output asynchronous.
 
-        logger.info('Bytes: %r' % data)
+        #logger.info('Bytes: %r' % data)
         logger.info('Redraw generation done in %ss, bytes=%i' %
                 (datetime.datetime.now() - start, len(data)))
 
@@ -233,7 +233,7 @@ class Renderer:
                     if colour_code:
                         write('\033[0;%im' % colour_code)
                     else: # 256 colour
-                        write('\033[38;5;%im' % char.fg)
+                        write('\033[38;5;%im' % (char.fg - 1024))
                     last_fg = char.fg
 
                 if char.bg != last_bg:
@@ -241,7 +241,7 @@ class Renderer:
                     if colour_code:
                         write('\033[%im' % colour_code)
                     else: # 256 colour
-                        write('\033[48;5;%im' % char.bg)
+                        write('\033[48;5;%im' % (char.bg - 1024))
                     last_bg = char.bg
 
                 if char.bold and not last_bold:
