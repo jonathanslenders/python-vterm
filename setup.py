@@ -14,5 +14,5 @@ setup(
         description='Python terminal multiplexer (Pure Python tmux clone)',
         long_description=open("README.rst").read(),
         packages=['pymux'],
-        install_requires = [ 'asyncio', 'pyte' ],
+        install_requires = [ 'asyncio', 'pyte', 'docopt' ],
 )

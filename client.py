@@ -15,6 +15,7 @@ from pymux import __version__
 from pymux.run.socket_client import start_client
 from pymux.run.socket_server import start_server
 from pymux.run.standalone import start_standalone
+from pymux.run.utils import session_info
 
 
 def start(name=sys.argv[0]):
@@ -31,6 +32,9 @@ def start(name=sys.argv[0]):
 
     elif a['attach']:
         start_client()
+
+    elif a['session-info']:
+        print(session_info())
 
 if __name__ == '__main__':
     start()

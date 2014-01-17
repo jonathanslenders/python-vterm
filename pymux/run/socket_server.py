@@ -88,9 +88,11 @@ class ServerProtocol(asyncio_amp.AMPProtocol):
                     "panes": { p.id: get_pane_info(p) for p in window.panes }
             }
 
-        return json.dumps({
-                "windows": { w.id: get_window_info(w) for w in self.session.windows }
-        })
+        return {
+                'text': json.dumps({
+                    "windows": { w.id: get_window_info(w) for w in self.session.windows }
+                    })
+        }
 
     @asyncio.coroutine
     def send_output_to_client(self, data):
