@@ -292,8 +292,6 @@ class BetterScreen(pyte.Screen):
 
         self._set_char(self.cursor.x, self.cursor.y,
                                 self.cursor.attrs._replace(data=char))
-        ##self.buffer[self.cursor.y][self.cursor.x] = self.cursor.attrs \
-        ##    ._replace(data=char)
 
         # .. note:: We can't use :meth:`cursor_forward()`, because that
         #           way, we'll never know when to linefeed.
@@ -399,7 +397,7 @@ class BetterScreen(pyte.Screen):
             del line[i + count]
 
     def erase_characters(self, count=None):
-        raise NotImplementedError('erase_characters not implemented')
+        raise NotImplementedError('erase_characters not implemented') # TODO
 
     def erase_in_line(self, type_of=0, private=False):
         """Erases a line in a specific way.
@@ -458,10 +456,6 @@ class BetterScreen(pyte.Screen):
         # In case of 0 or 1 we have to erase the line with the cursor.
         if type_of in [0, 1]:
             self.erase_in_line(type_of)
-
-    # def ensure_bounds(self, use_margins=None):
-    #     pass # TODO:
-    #     #raise NotImplementedError('ensure_bounds not implemented')
 
     def alignment_display(self):
         for y in range(0, self.lines):

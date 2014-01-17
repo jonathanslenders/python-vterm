@@ -1,5 +1,5 @@
-
 import asyncio_amp
+
 
 # From server to client.
 
@@ -44,3 +44,6 @@ class GetSessionInfo(asyncio_amp.Command):
     response = [
         ('text', asyncio_amp.String()),
     ]
+
+class NewWindow(asyncio_amp.Command):
+    pass

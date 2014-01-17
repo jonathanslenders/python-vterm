@@ -9,7 +9,7 @@ import weakref
 import json
 
 from pymux.session import Session
-from pymux.amp_commands import WriteOutput, SendKeyStrokes, GetSessions, SetSize, DetachClient, AttachClient, GetSessionInfo
+from pymux.amp_commands import WriteOutput, SendKeyStrokes, GetSessions, SetSize, DetachClient, AttachClient, GetSessionInfo, NewWindow
 from pymux.input import InputProtocol
 from pymux.renderer import AmpRenderer
 from pymux.log import logger
@@ -93,6 +93,10 @@ class ServerProtocol(asyncio_amp.AMPProtocol):
                     "windows": { w.id: get_window_info(w) for w in self.session.windows }
                     })
         }
+
+    @NewWindow.responder
+    def _new_window(self):
+        self.session.create_new_window()
 
     @asyncio.coroutine
     def send_output_to_client(self, data):
