@@ -121,7 +121,7 @@ class AlternateScreen(pyte.DiffScreen):
     def set_mode(self, *modes, **kwargs):
         # On "\e[?1049h", enter alternate screen mode. Backup the current state,
         if 1049 in modes:
-            self._original_screen = self[:]
+            self._original_screen = self.buffer[:]
             self._original_screen_vars = \
                 { v:getattr(self, v) for v in self.swap_variables }
             self.reset()
@@ -133,7 +133,7 @@ class AlternateScreen(pyte.DiffScreen):
         if 1049 in modes and self._original_screen:
             for k, v in self._original_screen_vars.items():
                 setattr(self, k, v)
-            self[:] = self._original_screen
+            self.buffer[:] = self._original_screen
 
             self._original_screen = None
             self._original_screen_vars = {}

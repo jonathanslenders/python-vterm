@@ -178,9 +178,9 @@ class Renderer:
 
         write('\033[0m')
 
-        for l in range(len(pane.screen)):
+        for l in range(len(pane.screen.buffer)):
             if not only_dirty or l in pane.screen.dirty:
-                line = pane.screen[l]
+                line = pane.screen.buffer[l]
 
                     # TODO: trim spaces on the right. If there is space until
                     # the right margin, ig
