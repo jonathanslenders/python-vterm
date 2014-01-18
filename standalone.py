@@ -21,33 +21,37 @@ logging.basicConfig(stream=logfile, level=logging.INFO)
 
 @asyncio.coroutine
 def run():
-    # Create output transport
+    # Output transport/protocol
     output_transport, output_protocol = yield from loop.connect_write_pipe(BaseProtocol, os.fdopen(0, 'wb'))
 
+	# Enter alternate screen buffer
+    output_transport.write(b'\033[?1049h')
+
+    # Create session and renderer
     session = Session()
-    #renderer = StdoutRenderer(weakref.ref(session))
     renderer = PipeRenderer(weakref.ref(session), output_transport.write)
     session.add_renderer(renderer)
 
+    # handle resize events
     def sigwinch_handler(n, frame):
         session.update_size()
         loop.call_soon(session.update_size)
     signal.signal(signal.SIGWINCH, sigwinch_handler)
 
-    # Use a connect_read_pipe to read the input.
+    # Input transport/protocol
     input_transport, input_protocol = yield from loop.connect_read_pipe(
                         lambda:InputProtocol(session), sys.stdin)
 
     yield from session.run()
 
+	# Exit alternate screen buffer and make cursor visible again.
+    output_transport.write(b'\033[?1049l')
+    output_transport.write(b'\033[?25h')
+
 if __name__ == '__main__':
     with raw_mode(sys.stdin.fileno()):
         try:
-            # Set terminal:
-            sys.stdout.write('\033[?1049h') # Enter alternate screen buffer
             loop.run_until_complete(run())
-            sys.stdout.write('\033[?1049l') # Quit alternate screen buffer
-            sys.stdout.write('\033[?25h') # Make sure the cursor is visible again.
         except Exception as e:
             logger.error('Error')
             logger.error(repr(e))
