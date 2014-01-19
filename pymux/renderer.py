@@ -165,11 +165,6 @@ class Renderer:
         data = []
         write = data.append
 
-        #test = []
-        #for idx, line in enumerate(pane.screen.display, 1):
-        #    test.append("{0:2d} {1} ¶\n".format(idx, line))
-        #logger.info(''.join(test))
-
         last_fg = 'default'
         last_bg = 'default'
         last_bold = False
@@ -178,60 +173,57 @@ class Renderer:
 
         write('\033[0m')
 
-        for l in range(len(pane.screen.buffer)):
-            if not only_dirty or l in pane.screen.dirty:
-                line = pane.screen.buffer[l]
+        # Calculate the vertical scroll offset.
+        offset = pane.screen.line_offset
 
-                    # TODO: trim spaces on the right. If there is space until
-                    # the right margin, ig
+        for line_index in range(0, pane.screen.lines):
+            for column_index in range(0, pane.screen.columns):
+                char = pane.screen.buffer[line_index + offset][column_index]
 
-                # Position cursor for line.
-                write('\033[%i;%iH' % (pane.py + l + 1, pane.px + 1))
+                write('\033[%i;%iH' % (pane.py + line_index + 1, pane.px + column_index + 1))
 
+                # If the bold/underscore/reverse parameters are reset.
+                # Always use global reset.
+                if (last_bold and not char.bold) or \
+                                    (last_underscore and not char.underscore) or \
+                                    (last_reverse and not char.reverse):
+                    write('\033[0m')
 
-                for char in line:
-                    # If the bold/underscore/reverse parameters are reset.
-                    # Always use global reset.
-                    if (last_bold and not char.bold) or \
-                                        (last_underscore and not char.underscore) or \
-                                        (last_reverse and not char.reverse):
-                        write('\033[0m')
+                    last_fg = 'default'
+                    last_bg = 'default'
+                    last_bold = False
+                    last_underscore = False
+                    last_reverse = False
 
-                        last_fg = 'default'
-                        last_bg = 'default'
-                        last_bold = False
-                        last_underscore = False
-                        last_reverse = False
+                if char.fg != last_fg:
+                    colour_code = reverse_colour_code.get(char.fg, None)
+                    if colour_code:
+                        write('\033[0;%im' % colour_code)
+                    else: # 256 colour
+                        write('\033[38;5;%im' % char.fg)
+                    last_fg = char.fg
 
-                    if char.fg != last_fg:
-                        colour_code = reverse_colour_code.get(char.fg, None)
-                        if colour_code:
-                            write('\033[0;%im' % colour_code)
-                        else: # 256 colour
-                            write('\033[38;5;%im' % char.fg)
-                        last_fg = char.fg
+                if char.bg != last_bg:
+                    colour_code = reverse_bgcolour_code.get(char.bg, None)
+                    if colour_code:
+                        write('\033[%im' % colour_code)
+                    else: # 256 colour
+                        write('\033[48;5;%im' % char.bg)
+                    last_bg = char.bg
 
-                    if char.bg != last_bg:
-                        colour_code = reverse_bgcolour_code.get(char.bg, None)
-                        if colour_code:
-                            write('\033[%im' % colour_code)
-                        else: # 256 colour
-                            write('\033[48;5;%im' % char.bg)
-                        last_bg = char.bg
+                if char.bold and not last_bold:
+                    write('\033[1m')
+                    last_bold = char.bold
 
-                    if char.bold and not last_bold:
-                        write('\033[1m')
-                        last_bold = char.bold
+                if char.underscore and not last_underscore:
+                    write('\033[4m')
+                    last_underscore = char.underscore
 
-                    if char.underscore and not last_underscore:
-                        write('\033[4m')
-                        last_underscore = char.underscore
+                if char.reverse and not last_reverse:
+                    write('\033[7m')
+                    last_reverse = char.reverse
 
-                    if char.reverse and not last_reverse:
-                        write('\033[7m')
-                        last_reverse = char.reverse
-
-                    write(char.data)
+                write(char.data)
 
         return data
 
@@ -265,9 +257,7 @@ class PipeRenderer(Renderer):
 
     @asyncio.coroutine
     def _write_output(self, data):
-        logger.info('BEFORE')
         self._write_func(data.encode('utf-8'))
-        logger.info('AFTER')
 
     def get_size(self):
         y, x = get_size(sys.stdout)

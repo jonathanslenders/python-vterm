@@ -39,14 +39,16 @@ class Session:
         parts = self._invalidate_parts
         self._invalidate_parts = 0
 
+		# XXX: freeze panes here. (deep copy buffers)
+
         for r in self.renderers:
             yield from r.repaint(parts)
 
-        if self.active_window:
-            for pane in self.active_window.panes:
-                pane.screen.dirty = set()
-                    # XXX: this is not entirely correct. We should have frozen the
-                    # set before rendering
+   #     if self.active_window:
+   #         for pane in self.active_window.panes:
+   #             pane.screen.dirty = set()
+   #                 # XXX: this is not entirely correct. We should have frozen the
+   #                 # set before rendering
 
         # Reschedule again, if something changed while rendering in the
         # meantime.
