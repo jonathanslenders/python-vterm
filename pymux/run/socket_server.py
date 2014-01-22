@@ -8,7 +8,7 @@ import logging
 import weakref
 import json
 
-from pymux.session import Session
+from pymux.session import PyMuxSession
 from pymux.amp_commands import WriteOutput, SendKeyStrokes, GetSessions, SetSize, DetachClient, AttachClient, GetSessionInfo, NewWindow
 from pymux.input import InputProtocol
 from pymux.renderer import AmpRenderer
@@ -35,11 +35,13 @@ class ServerProtocol(asyncio_amp.AMPProtocol):
     def __init__(self, session, done_callback):
         super().__init__()
         self.session = session
+        self.done_callback = done_callback
+
+        # When the client attaches the session.
         self.renderer = None
         self.input_protocol = None
         self.client_width = 80
         self.client_height = 40
-        self.done_callback = done_callback
 
     def connection_made(self, transport):
         super().connection_made(transport)
@@ -111,7 +113,7 @@ class ServerProtocol(asyncio_amp.AMPProtocol):
 
 @asyncio.coroutine
 def run():
-    session = Session()
+    session = PyMuxSession()
     connections = []
 
     def protocol_factory():

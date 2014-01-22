@@ -1,31 +1,35 @@
-from pymux.layout import TileContainer
-from pymux.invalidate import Redraw
-from pymux.panes import BashPane
-
+from .layout import TileContainer
+from .invalidate import Redraw
+import weakref
 
 class Window:
     _counter = 0
 
-    def __init__(self, pane_executor, invalidate_func):
+    def __init__(self):
         self.layout = TileContainer()
         self.active_pane = None
-        self.invalidate = invalidate_func
-        self.pane_executor = pane_executor
         self.name = '' # TODO
         self.panes = []
         self.id = self._next_id()
+
+        self.session = None # Weakref to session added by session.add_window
 
     @classmethod
     def _next_id(cls):
         cls._counter += 1
         return cls._counter
 
-    def create_new_pane(self, pane_cls=BashPane, vsplit=False):
+    def invalidate(self, *a):
+        session = self.session()
+        if session:
+            if session.active_window == self:
+                session.invalidate(*a)
+
+    def add_pane(self, pane, vsplit=False):
         """
-        Split the current window and create a new Pane instance.
+        Split the current window and add this pane to the layout.
         """
-        pane = pane_cls(self.pane_executor,
-                        lambda: self.invalidate(Redraw.Panes))
+        pane.window = weakref.ref(self)
 
         if self.active_pane:
             parent = self.active_pane.parent

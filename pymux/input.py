@@ -51,7 +51,7 @@ class InputProtocol:
             b'"': lambda: self.session.split_pane(vsplit=False),
             b'%': lambda: self.session.split_pane(vsplit=True),
             b'x': self.session.kill_current_pane,
-            b'c': self.session.create_new_window,
+ #           b'c': self.session.create_new_window,
             b'h': lambda: self.session.resize_current_tile('L', 4),
             b'k': lambda: self.session.resize_current_tile('U', 4),
             b'l': lambda: self.session.resize_current_tile('R', 4),

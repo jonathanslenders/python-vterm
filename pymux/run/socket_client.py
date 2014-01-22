@@ -5,7 +5,7 @@ from asyncio.protocols import BaseProtocol
 from pymux.amp_commands import WriteOutput, SendKeyStrokes, GetSessions, SetSize, DetachClient, AttachClient
 from pymux.session import Session
 from pymux.std import raw_mode
-from pymux.utils import get_size
+from pymux.utils import get_size, alternate_screen
 
 import asyncio
 import asyncio_amp
@@ -19,10 +19,11 @@ loop = asyncio.get_event_loop()
 
 
 class ClientProtocol(asyncio_amp.AMPProtocol):
-    def __init__(self, output_transport):
+    def __init__(self, output_transport, detach_callback):
         super().__init__()
         self._output_transport = output_transport
         self._write = output_transport.write
+        self._detach_callback = detach_callback
 
     def connection_made(self, transport):
         super().connection_made(transport)
@@ -34,8 +35,7 @@ class ClientProtocol(asyncio_amp.AMPProtocol):
 
     @DetachClient.responder
     def _detach_client(self):
-        # Wait for the loop to finish all writes
-        loop.stop()
+        self._detach_callback()
 
     def send_input(self, data):
         asyncio.async(self.call_remote(SendKeyStrokes, data=data))
@@ -55,42 +55,37 @@ class InputProtocol(BaseProtocol):
 
 @asyncio.coroutine
 def _run():
+    f = asyncio.Future()
+
     output_transport, output_protocol = yield from loop.connect_write_pipe(
                     BaseProtocol, os.fdopen(0, 'wb', 0))
 
     # Establish server connection
-    transport, protocol = yield from loop.create_connection(
-                    lambda:ClientProtocol(output_transport), 'localhost', 4376)
+    def factory():
+        return ClientProtocol(output_transport, lambda: f.set_result(None))
 
-    # Tell the server that we want to attach to the session
-    yield from protocol.call_remote(AttachClient)
+    transport, protocol = yield from loop.create_connection(factory, 'localhost', 4376)
 
     # Input
     input_transport, input_protocol = yield from loop.connect_read_pipe(
                     lambda:InputProtocol(protocol.send_input), os.fdopen(0, 'rb', 0))
 
-    # When the size changed
+    # Send terminal size to server when it changes
     def sigwinch_handler(n, frame):
         loop.call_soon(protocol.send_size)
     signal.signal(signal.SIGWINCH, sigwinch_handler)
 
+    with alternate_screen(output_transport.write):
+        with raw_mode(0):
+            # Tell the server that we want to attach to the session
+            yield from protocol.call_remote(AttachClient)
+
+            # Run loop and wait for detach command
+            yield from f
+
 
 def start_client():
-    # Enter alternate screen buffer
-    sys.stdout.write('\033[?1049h')
-    sys.stdout.flush()
-
-    # Run client event loop in raw mode
-    with raw_mode(0):
-        loop.run_until_complete(_run())
-        loop.run_forever()
-
-    # Quit alternate screen buffer. (need to reopen stdout, because it was set
-    # non blocking by asynio)
-    out = os.fdopen(0, 'wb', 0)
-    out.write(b'\033[?25h') # Make sure the cursor is visible again.
-    out.write(b'\033[?1049l') # Quit alternate screen buffer
-    out.flush()
+    loop.run_until_complete(_run())
 
 
 if __name__ == '__main__':

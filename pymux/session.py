@@ -1,12 +1,14 @@
-from pymux.invalidate import Redraw
-from pymux.layout import Location
-from pymux.statusbar import StatusBar
-from pymux.window import Window
+from .invalidate import Redraw
+from .layout import Location
+from .statusbar import StatusBar
+from .window import Window
+from .panes import BashPane
 from collections import defaultdict
 
 import asyncio
 import weakref
 import concurrent
+import weakref
 
 from .log import logger
 
@@ -22,17 +24,14 @@ class Session:
         self.renderers = []
         self.windows = [ ]
         self.active_window = None
-        self.pane_executor = concurrent.futures.ThreadPoolExecutor(1024)
 
         self._last_char_buffers = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: Char)))
 
         self._invalidated = False
         self._invalidate_parts = 0
 
-        self.pane_runners = [ ] # Futures
-
         self.status_bar = StatusBar(weakref.ref(self))
-        self.create_new_window()
+        #self.add_window(Window())
 
         self.invalidate()
 
@@ -96,20 +95,17 @@ class Session:
         else:
             return None
 
-    def create_new_window(self):
-        def invalidate_func(*a):
-            if window == self.active_window:
-                self.invalidate(*a)
-
-        window = Window(self.pane_executor, invalidate_func)
-        pane = window.create_new_pane()
+    def add_window(self, window):
+        """
+        Add new window.
+        """
         self.active_window = window
         self.windows.append(window)
+        window.session = weakref.ref(self)
 
-        self._run_pane(self.active_window, pane)
         self.update_size()
-
         self.invalidate(Redraw.All)
+        return window
 
     def update_size(self):
         """
@@ -137,6 +133,58 @@ class Session:
         self.invalidate(Redraw.All)
 
     # Commands
+
+
+    def send_input_to_current_pane(self, data):
+        if self.active_pane:
+            logger.info('Sending %r' % b''.join(data))
+            self.active_pane.write_input(b''.join(data))
+
+    def focus_next_window(self):
+        if self.active_window and self.windows:
+            try:
+                index = self.windows.index(self.active_window) + 1
+            except ValueError:
+                index = 0
+            self.active_window = self.windows[index % len(self.windows)]
+            self.invalidate(Redraw.All)
+
+    def kill_current_pane(self):
+        if self.active_pane:
+            self.active_pane.kill_process()
+
+    def resize_current_tile(self, direction='R', amount=1):
+        self.active_pane.parent.resize_tile(direction, amount)
+        self.invalidate(Redraw.All)
+
+    def move_focus(self, direction='R'):
+        self.active_window.move_focus(direction)
+        self.invalidate(Redraw.Cursor | Redraw.Borders)
+
+
+class PyMuxSession(Session):
+    def __init__(self):
+        super().__init__()
+        self.pane_executor = concurrent.futures.ThreadPoolExecutor(1024)
+        self.pane_runners = [ ] # Futures
+
+        # Create first window/pane.
+        self.create_new_window()
+
+    def create_new_window(self):
+        logger.info('create_new_window')
+        window = Window()
+        self.add_window(window)
+
+        pane = BashPane(self.pane_executor)
+        window.add_pane(pane)
+        self._run_pane(window, pane)
+
+
+    def split_pane(self, vsplit):
+        pane = BashPane(self.pane_executor)
+        self.active_window.add_pane(pane, vsplit=vsplit)
+        self._run_pane(self.active_window, pane)
 
     def _run_pane(self, window, pane):
         # Create coroutine which handles the creation/deletion of this pane in
@@ -184,34 +232,3 @@ class Session:
 
             else:
                 break
-
-    def send_input_to_current_pane(self, data):
-        if self.active_pane:
-            logger.info('Sending %r' % b''.join(data))
-            self.active_pane.write_input(b''.join(data))
-
-    def focus_next_window(self):
-        if self.active_window and self.windows:
-            try:
-                index = self.windows.index(self.active_window) + 1
-            except ValueError:
-                index = 0
-            self.active_window = self.windows[index % len(self.windows)]
-            self.invalidate(Redraw.All)
-
-    def split_pane(self, vsplit):
-        pane = self.active_window.create_new_pane(vsplit=vsplit)
-        self._run_pane(self.active_window, pane)
-
-    def kill_current_pane(self):
-        if self.active_pane:
-            self.active_pane.kill_process()
-
-    def resize_current_tile(self, direction='R', amount=1):
-        self.active_pane.parent.resize_tile(direction, amount)
-        self.invalidate(Redraw.All)
-
-    def move_focus(self, direction='R'):
-        self.active_window.move_focus(direction)
-        self.invalidate(Redraw.Cursor | Redraw.Borders)
-
