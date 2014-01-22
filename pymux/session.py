@@ -16,6 +16,7 @@ from pyte.screens import Char
 
 MAX_WORKERS = 1024 # Max number of threads for the pane runners.
 
+
 class Session:
     def __init__(self):
         self.renderers = []

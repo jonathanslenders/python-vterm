@@ -17,9 +17,6 @@ from pymux.log import logger
 
 loop = asyncio.get_event_loop()
 
-logfile = open('/tmp/pymux-log', 'w')
-logging.basicConfig(stream=logfile, level=logging.INFO)
-
 
 class SocketServerInputProtocol(InputProtocol):
     def __init__(self, session, server_protocol):

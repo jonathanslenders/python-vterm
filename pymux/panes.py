@@ -4,6 +4,7 @@ import resource
 import pyte
 import os
 import io
+import sys
 import signal
 from collections import defaultdict
 
@@ -503,96 +504,15 @@ class BetterScreen(pyte.Screen):
         # See tmux/input.c, line: 1388
 
 
-#class AlternateScreen(pyte.DiffScreen):
-#    """
-#    DiffScreen which also implements the alternate screen buffer like Xterm.
-#    """
-#    swap_variables = [
-#            'mode',
-#            'margins',
-#            'charset',
-#            'g0_charset',
-#            'g1_charset',
-#            'tabstops',
-#            'cursor', ]
-#
-#    def __init__(self, *args):
-#        super().__init__(*args)
-#        self._original_screen = None
-#
-#    def set_mode(self, *modes, **kwargs):
-#        # On "\e[?1049h", enter alternate screen mode. Backup the current state,
-#        if 1049 in modes:
-#            self._original_screen = self.buffer[:]
-#            self._original_screen_vars = \
-#                { v:getattr(self, v) for v in self.swap_variables }
-#            self.reset()
-#
-#        super().set_mode(*modes, **kwargs)
-#
-#    def reset_mode(self, *modes, **kwargs):
-#        # On "\e[?1049l", restore from alternate screen mode.
-#        if 1049 in modes and self._original_screen:
-#            for k, v in self._original_screen_vars.items():
-#                setattr(self, k, v)
-#            self.buffer[:] = self._original_screen
-#
-#            self._original_screen = None
-#            self._original_screen_vars = {}
-#            self.dirty.update(range(self.lines))
-#
-#        super().reset_mode(*modes, **kwargs)
-#
-#    def select_graphic_rendition(self, *attrs):
-#        """ Support 256 colours """
-#        g = pyte.graphics
-#        replace = {}
-#
-#        if not attrs:
-#            attrs = [0]
-#        else:
-#            attrs = list(attrs[::-1])
-#
-#        while attrs:
-#            attr = attrs.pop()
-#
-#            if attr in g.FG:
-#                replace["fg"] = g.FG[attr]
-#            elif attr in g.BG:
-#                replace["bg"] = g.BG[attr]
-#            elif attr in g.TEXT:
-#                attr = g.TEXT[attr]
-#                replace[attr[1:]] = attr.startswith("+")
-#            elif not attr:
-#                replace = self.default_char._asdict()
-#
-#            elif attr in (38, 48):
-#                n = attrs.pop()
-#                if n != 5:
-#                    continue
-#
-#                if attr == 38:
-#                    m = attrs.pop()
-#                    replace["fg"] = 1024 + m
-#                elif attr == 48:
-#                    m = attrs.pop()
-#                    replace["bg"] = 1024 + m
-#
-#        self.cursor.attrs = self.cursor.attrs._replace(**replace)
-#
-#        # See tmux/input.c, line: 1388
-
 
 class Pane(Container):
     _counter = 0
 
-    def __init__(self, pane_executor, command='/usr/bin/vim',
-                                invalidate_callback=None):
+    def __init__(self, pane_executor, invalidate_callback=None):
         super().__init__()
 
         self.pane_executor = pane_executor
         self.invalidate = invalidate_callback
-        self.command = command
 
         # Pane position.
         self.px = 0
@@ -639,8 +559,6 @@ class Pane(Container):
 
     def set_location(self, location):
         """ Set position of pane in window. """
-                # TODO: The position should probably not be a property of the
-                #       pane itself.  A pane can appear in several windows.
         logger.info('set_position(px=%r, py=%r, sx=%r, sy=%r)' %
                             (location.px, location.py, location.sx, location.sy))
         self.location = location
@@ -650,11 +568,15 @@ class Pane(Container):
         self.sx = location.sx
         self.sy = location.sy
         self.screen.resize(self.sy, self.sx)
-        set_size(self.slave, self.sy, self.sx) # TODO: set on stdout??
+        set_size(self.slave, self.sy, self.sx)
 
         self.invalidate()
 
-    def _run(self):
+    def _run_fork(self):
+        """
+        Fork this process. The child gets attached to the slave side of the
+        pseudo terminal.
+        """
         pid = os.fork()
         if pid == 0: # TODO: <0 is fail
             os.close(self.master)
@@ -666,18 +588,15 @@ class Pane(Container):
             os.dup2(self.slave, 1)
             os.dup2(self.slave, 2)
 
-            # Do not allow child to inherit open file descriptors from parent.
-            max_fd = resource.getrlimit(resource.RLIMIT_NOFILE)[-1]
-            for i in range(3, max_fd):
-                try:
-                    os.close(i)
-                except OSError:
-                    pass
-
             # Set environment variables for child process
             os.environ['PYMUX_PANE'] = 'TODO:Pane value'
 
-            os.execv(self.command, ['bash'])
+            # Execute in child.
+            try:
+                self._exec()
+            except Exception as e:
+                os._exit(1)
+            os._exit(0)
 
         elif pid > 0:
             logger.info('Forked process: %r' % pid)
@@ -687,6 +606,9 @@ class Pane(Container):
             logger.info('Process ended, status=%r' % status)
             return
 
+    def _exec(self):
+        raise NotImplementedError
+
     @asyncio.coroutine
     def run(self):
         try:
@@ -695,7 +617,7 @@ class Pane(Container):
                                 lambda:SubProcessProtocol(self.write_output), self.shell_out)
 
             # Run process in executor, wait for that to finish.
-            yield from loop.run_in_executor(self.pane_executor, self._run)
+            yield from loop.run_in_executor(self.pane_executor, self._run_fork)
 
             # Set finished.
             self.finished = True # TODO: close pseudo terminal.
@@ -774,3 +696,29 @@ class Pane(Container):
         else:
             raise Exception("This can't happen")
             #return CellPosition.Inside
+
+
+class BashPane(Pane):
+    def _exec(self):
+        """
+        (To be called inside the fork)
+        Run Python code and call exec.
+        Run external process using "exec"
+        """
+        # Do not allow child to inherit open file descriptors from parent.
+        # (In case that we keep running Python code. We shouldn't close them.
+        # because the garbage collector is still active, and he will close them
+        # eventually.)
+        max_fd = resource.getrlimit(resource.RLIMIT_NOFILE)[-1]
+        for i in range(3, max_fd):
+            if i != self.slave:
+                try:
+                    os.close(i)
+                except OSError:
+                    pass
+
+        self._do_exec()
+
+    def _do_exec(self):
+        os.execv('/bin/bash', ['bash'])
+

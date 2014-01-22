@@ -1,6 +1,6 @@
 from pymux.layout import TileContainer
 from pymux.invalidate import Redraw
-from pymux.panes import Pane
+from pymux.panes import BashPane
 
 
 class Window:
@@ -20,11 +20,11 @@ class Window:
         cls._counter += 1
         return cls._counter
 
-    def create_new_pane(self, command='/bin/bash', vsplit=False):
+    def create_new_pane(self, pane_cls=BashPane, vsplit=False):
         """
         Split the current window and create a new Pane instance.
         """
-        pane = Pane(self.pane_executor, command,
+        pane = pane_cls(self.pane_executor,
                         lambda: self.invalidate(Redraw.Panes))
 
         if self.active_pane:

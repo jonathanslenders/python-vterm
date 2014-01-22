@@ -16,8 +16,6 @@ import weakref
 
 loop = asyncio.get_event_loop()
 
-logfile = open('/tmp/pymux-log', 'w')
-logging.basicConfig(stream=logfile, level=logging.INFO)
 
 
 @asyncio.coroutine
