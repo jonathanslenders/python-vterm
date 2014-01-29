@@ -11,6 +11,7 @@ import termcolor
 
 loop = asyncio.get_event_loop()
 
+
 class DebugClientProtocol(asyncio_amp.AMPProtocol):
     def __init__(self, debugger_client):
         super().__init__()
@@ -85,14 +86,14 @@ class DebugPrompt(CommandLine):
             self.debugger_client.amp_protocol.step()
 
         elif command == 'quit':
-            sys.exit(0)
+            self.ctrl_c()
 
         else:
             self.output_transport.write(b'Unknown command...')
         self.output_transport.write(b'\r\n')
 
     def ctrl_c(self):
-        sys.exit(0)
+        self.debugger_client.done_f.set_result(None)
 
 
 class DebuggerClient:
@@ -108,7 +109,6 @@ class DebuggerClient:
 
     def process_done_callback(self):
         self.state = 'DONE'
-#        self.done_f.set_result(None)
         self.commandline.print()
 
     @asyncio.coroutine
@@ -138,6 +138,7 @@ class DebuggerClient:
 def start_client():
     d = DebuggerClient()
     loop.run_until_complete(d._run())
+
 
 if __name__ == '__main__':
     start_client()

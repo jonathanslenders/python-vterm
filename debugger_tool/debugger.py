@@ -19,6 +19,7 @@ from pymux.utils import alternate_screen, call_on_sigwinch
 from pymux.panes import ExecPane, BashPane
 from pymux.window import Window
 
+import docopt
 import asyncio
 import logging
 import os
