@@ -29,6 +29,11 @@ import weakref
 
 import asyncio_amp
 
+debugger_doc = \
+"""Usage:
+  debug_wrapper.py debug PYTHONFILE
+  debug_wrapper.py -h | --help
+"""
 loop = asyncio.get_event_loop()
 
 class PyMuxDebugInputProtocol(InputProtocol):
@@ -46,8 +51,12 @@ class DebugProtocol(BaseProtocol):
 
 
 class ApplicationPane(ExecPane):
+    def __init__(self, pythonfile):
+        super().__init__()
+        self.pythonfile = pythonfile
+
     def _exec(self):
-        os.execv('/home/jonathan/env/tulip-test2/bin/python', ['python', 'debug_wrapper.py' ])
+        os.execv('/home/jonathan/env/tulip-test2/bin/python', ['python', 'debug_wrapper.py', 'debug', self.pythonfile ])
 
     def _in_parent(self, pid):
         pass
@@ -59,7 +68,7 @@ class DebuggerPane(ExecPane):
 
 
 @asyncio.coroutine
-def run():
+def run(pythonfile):
     # Output transport/protocol
     output_transport, output_protocol = yield from loop.connect_write_pipe(BaseProtocol, os.fdopen(0, 'wb'))
 
@@ -74,7 +83,7 @@ def run():
             # Setup layout
             window = Window()
             session.add_window(window)
-            application_pane = ApplicationPane()
+            application_pane = ApplicationPane(pythonfile)
             debugger_pane = DebuggerPane()
             window.add_pane(application_pane)
             window.add_pane(debugger_pane, vsplit=True)
@@ -92,9 +101,11 @@ def run():
                     asyncio.async(debugger_pane.run()))
 
 
-def start_standalone():
-    loop.run_until_complete(run())
+def start_standalone(pythonfile):
+    loop.run_until_complete(run(pythonfile))
 
 
 if __name__ == '__main__':
-    start_standalone()
+    a = docopt.docopt(debugger_doc)
+    if a['PYTHONFILE']:
+        start_standalone(a['PYTHONFILE'])

@@ -17,9 +17,15 @@ from debugger_commands import Continue, Next, Step, Breaking
 import os
 import asyncio_amp
 import asyncio
+import docopt
 
 import json
 
+doc = \
+"""Usage:
+  debug_wrapper.py debug PYTHONFILE
+  debug_wrapper.py -h | --help
+"""
 
 class DebuggerPipeProtocol(BaseProtocol):
     """
@@ -75,7 +81,9 @@ class DebuggerAMPServerProtocol(asyncio_amp.AMPProtocol):
 
 
 class Debugger:
-    def __init__(self):
+    def __init__(self, pythonfile):
+        self.pythonfile = pythonfile
+
         # Open pipes for extra communication with child process.
         self.from_child_read, self.from_child_write = os.pipe()
         self.from_debugger_read, self.from_debugger_write = os.pipe()
@@ -105,7 +113,7 @@ class Debugger:
         pid = os.fork()
         if pid == 0:
             os.execv('/usr/bin/python', ['python', 'debugger_bootstrap.py',
-                                str(self.from_child_write), str(self.from_debugger_read) ])
+                                str(self.from_child_write), str(self.from_debugger_read), self.pythonfile ])
         else:
             pid, status = yield from loop.run_in_executor(None, lambda:os.waitpid(pid, 0))
 
@@ -125,5 +133,7 @@ class Debugger:
 
 
 if __name__ == '__main__':
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(Debugger().run())
+    a = docopt.docopt(doc)
+    if a['PYTHONFILE']:
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(Debugger(a['PYTHONFILE']).run())
