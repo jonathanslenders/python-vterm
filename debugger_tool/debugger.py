@@ -64,6 +64,7 @@ class ApplicationPane(ExecPane):
 
 class DebuggerPane(ExecPane):
     def _do_exec(self):
+        import time; time.sleep(.5) # XXX: remove: and make sure that we can reconnect if the application pane isn't listening yet.
         os.execv('/home/jonathan/env/tulip-test2/bin/python', ['python', 'debug_client.py' ])
 
 

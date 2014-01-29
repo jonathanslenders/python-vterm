@@ -10,19 +10,15 @@ be established by the parent process.
 from bdb import Bdb
 
 class ODB(Bdb):
-    def __init__(self, input_pipe, output_pipe):
+    def __init__(self, socket):
         Bdb.__init__(self)
-        self.input_pipe = input_pipe
-        self.output_pipe = output_pipe
+        self.socket = socket
 
         # Imports (attach to this class, don't pollute __main__)
-        import json, os, fcntl
+        import json
         self.json = json
-        self.os = os
-        self.fcntl = fcntl
 
         # Remember input pipe attributes
-        self._fl = fcntl.fcntl(self.input_pipe, fcntl.F_GETFL)
         self._input_buffer = ''
 
     def user_line(self, frame):
@@ -88,44 +84,35 @@ class ODB(Bdb):
             pass
         finally:
             sys.settrace(None)
-        #self.run(statement)#, a, a)
 
     def get_from_debugger(self, blocking=False):
         """
         Return the next json packet from the debugger. If blocking is False,
         return None when nothing is available.
         """
-        # Set blocking/non blocking
-        if blocking:
-            self.fcntl.fcntl(self.input_pipe, self.fcntl.F_SETFL, self._fl)
-        else:
-            self.fcntl.fcntl(self.input_pipe, self.fcntl.F_SETFL, self._fl | self.os.O_NONBLOCK)
+        while True:
+            # When not enough in the buffer, read from socket.
+            if not b'\n' in self._input_buffer:
+                self._input_buffer += self.socket.recv(10) # XXX: keep small for debugging.
 
-        # Read packet.
-        packet = self.input_pipe.readline()
-        if packet and packet[-1] == '\n':
-            packet = self._input_buffer + packet
-            self._input_buffer = ''
-            return self.json.loads(packet.decode('utf-8'))
-        else:
-            self._input_buffer += packet
-            return None
+            # When we found a \n separator, return packet.
+            if b'\n' in self._input_buffer:
+                packet, self._input_buffer = self._input_buffer.split(b'\n', 1)
+                return self.json.loads(packet.decode('utf-8'))
 
     def send_to_debugger(self, data):
         """
         Encode packet and send to debugger.
         (json utf8 encoded, lineline separated.)
         """
-        self.output_pipe.write(self.json.dumps(data).encode('utf-8') + '\n')
-        self.output_pipe.flush()
+        self.socket.sendall(self.json.dumps(data).encode('utf-8') + '\n')
 
 
 # Set up debugger
-import os, sys
-output_pipe = os.fdopen(int(sys.argv[1]), 'w')
-input_pipe = os.fdopen(int(sys.argv[2]), 'r')
-filename = sys.argv[3]
-db = ODB(input_pipe, output_pipe)
+import sys, socket
+socket = socket.fromfd(int(sys.argv[1]), socket.AF_UNIX, socket.SOCK_STREAM)
+filename = sys.argv[2]
+db = ODB(socket)
 
 # Start process
 print 'STARTING'

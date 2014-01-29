@@ -12,6 +12,7 @@ process.
 """
 
 from asyncio.protocols import BaseProtocol
+from asyncio.streams import open_connection
 from debugger_commands import Continue, Next, Step, Breaking
 
 import asyncio
@@ -26,24 +27,6 @@ doc = \
   debug_wrapper.py debug PYTHONFILE
   debug_wrapper.py -h | --help
 """
-
-class DebuggerPipeProtocol(BaseProtocol):
-    """
-    Protocol for receiving JSON packets from the pipe which is connected to the
-    debuggable child process.
-    """
-    def __init__(self, debugger):
-        self.debugger = debugger
-        self._buffer = ''
-
-    def data_received(self, data):
-        self._buffer += data.decode('utf-8')
-
-        lines = self._buffer.split('\n')
-        self._buffer = lines.pop()
-
-        for line in lines:
-            self.debugger.handle_packet_from_process(json.loads(line))
 
 
 class DebuggerAMPServerProtocol(asyncio_amp.AMPProtocol):
@@ -61,16 +44,19 @@ class DebuggerAMPServerProtocol(asyncio_amp.AMPProtocol):
         self.done_callback()
 
     @Continue.responder
+    @asyncio.coroutine
     def _continue(self):
-        self.debugger.send_to_process({ 'action': 'continue' })
+        yield from self.debugger.send_to_process({ 'action': 'continue' })
 
     @Next.responder
+    @asyncio.coroutine
     def _next(self):
-        self.debugger.send_to_process({ 'action': 'next' })
+        yield from self.debugger.send_to_process({ 'action': 'next' })
 
     @Step.responder
+    @asyncio.coroutine
     def _step(self):
-        self.debugger.send_to_process({ 'action': 'step' })
+        yield from self.debugger.send_to_process({ 'action': 'step' })
 
     def handle_packet_from_process(self, data):
         if data['action'] == 'breaking':
@@ -84,9 +70,8 @@ class Debugger:
     def __init__(self, pythonfile):
         self.pythonfile = pythonfile
 
-        # Open pipes for extra communication with child process.
-        self.from_child_read, self.from_child_write = os.pipe()
-        self.from_debugger_read, self.from_debugger_write = os.pipe()
+        # Open socketpair for communication with child process.
+        self.parent_socket, self.child_socket = socket.socketpair(socket.AF_UNIX, socket.SOCK_STREAM)
         self._connected_protocols = []
 
     @asyncio.coroutine
@@ -94,21 +79,24 @@ class Debugger:
         """
         The main coroutine.
         """
-        # Open read and write pipes
-        from_child_transport, from_child_protocol = yield from loop.connect_read_pipe(
-                        lambda: DebuggerPipeProtocol(self),
-                        os.fdopen(self.from_child_read, 'rb'))
+        # Open parent socket.
+        stream_reader, self._stream_writer = yield from open_connection(sock=self.parent_socket)
 
-        self.from_debugger_transport, self.from_debugger_protocol = yield from loop.connect_write_pipe(BaseProtocol,
-                        os.fdopen(self.from_debugger_write, 'wb'))
-
-        # Start AMP server
-        def amp_factory():
-            protocol = DebuggerAMPServerProtocol(self, lambda: self._connected_protocols.remove(protocol))
-            self._connected_protocols.append(protocol)
-            return protocol
+        # Run receiver loop.
+        @asyncio.coroutine
+        def receiver_loop():
+            while True:
+                line = yield from stream_reader.readline()
+                self.handle_packet_from_process(json.loads(line.decode('utf-8')))
+        asyncio.async(receiver_loop())
 
         try:
+            # Start AMP server
+            def amp_factory():
+                protocol = DebuggerAMPServerProtocol(self, lambda: self._connected_protocols.remove(protocol))
+                self._connected_protocols.append(protocol)
+                return protocol
+
             server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             server.bind('/tmp/python-debugger')
             self.amp_server = yield from loop.create_server(amp_factory, sock=server)
@@ -117,20 +105,24 @@ class Debugger:
             pid = os.fork()
             if pid == 0:
                 os.execv('/usr/bin/python', ['python', 'debugger_bootstrap.py',
-                                    str(self.from_child_write), str(self.from_debugger_read), self.pythonfile ])
+                                    str(self.child_socket.fileno()), self.pythonfile ])
             else:
+                self.child_socket.close()
                 pid, status = yield from loop.run_in_executor(None, lambda:os.waitpid(pid, 0))
 
         finally:
             # Close socket
             server.close()
+            print('removing socket')
             os.remove('/tmp/python-debugger')
 
+    @asyncio.coroutine
     def send_to_process(self, data):
         """
         Send packet to child process through pipe, serialized as JSON.
         """
-        self.from_debugger_transport.write(json.dumps(data).encode('utf-8') + b'\n')
+        self._stream_writer.write(json.dumps(data).encode('utf-8') + b'\n')
+        yield from self._stream_writer.drain()
 
     def handle_packet_from_process(self, data):
         """
