@@ -6,6 +6,7 @@ from pymux.std import raw_mode
 import asyncio
 import asyncio_amp
 import os
+import socket
 import sys
 import termcolor
 
@@ -122,7 +123,9 @@ class DebuggerClient:
             def factory():
                 return DebugClientProtocol(self)
 
-            transport, self.amp_protocol = yield from loop.create_connection(factory, 'localhost', 8000)
+            client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            client.connect('/tmp/python-debugger')
+            transport, self.amp_protocol = yield from loop.create_connection(factory, sock=client)
 
             # Create command line
             self.commandline = DebugPrompt(self, output_transport)

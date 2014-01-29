@@ -1,25 +1,29 @@
 from .invalidate import Redraw
 from .layout import Location
+from .log import logger
+from .panes import BashPane
 from .statusbar import StatusBar
 from .window import Window
-from .panes import BashPane
+
 from collections import defaultdict
+from pyte.screens import Char
 
 import asyncio
-import weakref
 import concurrent
 import weakref
-
-from .log import logger
+import weakref
 
 loop = asyncio.get_event_loop()
 
-from pyte.screens import Char
 
 MAX_WORKERS = 1024 # Max number of threads for the pane runners.
 
 
 class Session:
+    """
+    A session is a container of windows (which at their turn contain panes) and
+    is responsible for window management.
+    """
     def __init__(self):
         self.renderers = []
         self.windows = [ ]
@@ -31,7 +35,6 @@ class Session:
         self._invalidate_parts = 0
 
         self.status_bar = StatusBar(weakref.ref(self))
-        #self.add_window(Window())
 
         self.invalidate()
 
@@ -79,10 +82,9 @@ class Session:
             self.invalidate(self._invalidate_parts)
 
     def add_renderer(self, renderer):
-        """ Create a renderer for this client. """
+        """ Add this session renderer. """
         self.renderers.append(renderer)
         self.update_size()
-        return renderer # TODO: remove return statement
 
     def remove_renderer(self, renderer):
         self.renderers.remove(renderer)
@@ -90,6 +92,9 @@ class Session:
 
     @property
     def active_pane(self):
+        """
+        The active pane: the pane that is focussed in the active window.
+        """
         if self.active_window:
             return self.active_window.active_pane
         else:
@@ -133,7 +138,6 @@ class Session:
         self.invalidate(Redraw.All)
 
     # Commands
-
 
     def send_input_to_current_pane(self, data):
         if self.active_pane:

@@ -1,15 +1,17 @@
-import os
-
 """
 Some utilities that were taken from the pexpect source code.
+
+http://pexpect.sourceforge.net/pexpect.html
 """
+import os
 
 
 def pty_make_controlling_tty(tty_fd):
-    '''This makes the pseudo-terminal the controlling tty. This should be
+    """
+    This makes the pseudo-terminal the controlling tty. This should be
     more portable than the pty.fork() function. Specifically, this should
-    work on Solaris. '''
-
+    work on Solaris.
+    """
     child_name = os.ttyname(tty_fd)
 
     # Disconnect from controlling tty. Harmless if not already connected.

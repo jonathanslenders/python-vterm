@@ -12,14 +12,14 @@ process.
 """
 
 from asyncio.protocols import BaseProtocol
-
 from debugger_commands import Continue, Next, Step, Breaking
-import os
-import asyncio_amp
-import asyncio
-import docopt
 
+import asyncio
+import asyncio_amp
+import docopt
 import json
+import os
+import socket
 
 doc = \
 """Usage:
@@ -107,15 +107,24 @@ class Debugger:
             protocol = DebuggerAMPServerProtocol(self, lambda: self._connected_protocols.remove(protocol))
             self._connected_protocols.append(protocol)
             return protocol
-        self.amp_server = yield from loop.create_server(amp_factory, 'localhost', 8000)
 
-        # Start subprocess in fork
-        pid = os.fork()
-        if pid == 0:
-            os.execv('/usr/bin/python', ['python', 'debugger_bootstrap.py',
-                                str(self.from_child_write), str(self.from_debugger_read), self.pythonfile ])
-        else:
-            pid, status = yield from loop.run_in_executor(None, lambda:os.waitpid(pid, 0))
+        try:
+            server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            server.bind('/tmp/python-debugger')
+            self.amp_server = yield from loop.create_server(amp_factory, sock=server)
+
+            # Start subprocess in fork
+            pid = os.fork()
+            if pid == 0:
+                os.execv('/usr/bin/python', ['python', 'debugger_bootstrap.py',
+                                    str(self.from_child_write), str(self.from_debugger_read), self.pythonfile ])
+            else:
+                pid, status = yield from loop.run_in_executor(None, lambda:os.waitpid(pid, 0))
+
+        finally:
+            # Close socket
+            server.close()
+            os.remove('/tmp/python-debugger')
 
     def send_to_process(self, data):
         """

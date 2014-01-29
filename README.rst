@@ -10,6 +10,12 @@ About
 Right now this is still experimental, but I the target is to create a fully
 functional tmux clone in pure Python.
 
+The intention is to have a clean separation between a reusable libary that
+implements a terminal multiplexer and an application that uses it and could
+replace tmux. Another application would be a Python debugger where the
+application runs in one pane and the debugger in the other pane.
+
+
 Dependencies
 ------------
 

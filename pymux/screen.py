@@ -1,14 +1,24 @@
-import pyte
-from pyte.screens import Margins, Cursor, Char
+"""
+Custom `Screen` class for the `pyte` library.
+
+Changes compared to the original `Screen` class:
+    - We store the layout in a dict instead of a list, in order to have a
+      scalable window. When the window size is reduced and increased again, the
+      hidden text will appear again.
+    - 256 colour support (xterm)
+    - Per character diffs instead of per line diffs.
+"""
 from collections import defaultdict
-from pyte import modes as mo
 from pyte import charsets as cs
+from pyte import modes as mo
+from pyte.graphics import FG, BG
+from pyte.screens import Margins, Cursor, Char
+import pyte
 
 from .log import logger
 
 
 # Patch pyte.graphics to accept High intensity colours as well.
-from pyte.graphics import FG, BG
 
 FG.update({
     90: "hi_fg_1",
