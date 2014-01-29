@@ -1,6 +1,12 @@
 #!/usr/bin/env python
 # encoding: utf-8
 
+"""
+Bootstrap code which should be started by debug_wrapper.py
+Probably, you will never start this file by hand. It expects centain pipes to
+be established by the parent process.
+"""
+
 import fcntl
 import json
 import os
@@ -48,9 +54,10 @@ class ODB(Bdb):
 
 
 class DebuggerConnection:
-    def __init__(self):
-        self.output_pipe = os.fdopen(int(sys.argv[1]), 'w')
-        self.input_pipe = os.fdopen(int(sys.argv[2]), 'r')
+    def __init__(self, input_pipe, output_pipe):
+        self.input_pipe = input_pipe
+        self.output_pipe = output_pipe
+
 
         # Remember input pipe attributes
         self._fl = fcntl.fcntl(self.input_pipe, fcntl.F_GETFL)
@@ -101,14 +108,24 @@ def a():
 
 TRACE_INTO = ['b']
 
-db = DebuggerConnection()
+
+
+# Set up debugger
+output_pipe = os.fdopen(int(sys.argv[1]), 'w')
+input_pipe = os.fdopen(int(sys.argv[2]), 'r')
+db = DebuggerConnection(input_pipe, output_pipe)
+
+# Start process
 print 'STARTING'
 ODB().set_trace()
 
+# <<< Process code should come here
 
 a()
 a()
 a()
 
+# >>>
 
+# Always remove trace function before quitting.
 sys.settrace(None)

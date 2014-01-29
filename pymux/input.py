@@ -27,8 +27,11 @@ class InputProtocol:
 
         self._send_buffer = []
 
+    def send_input_to_current_pane(self, data):
+        self._send_buffer.append(data)
+
     def _input_parser(self):
-        bindings = self._get_bindings()
+        bindings = self.get_bindings()
 
         while True:
             char = yield
@@ -42,16 +45,23 @@ class InputProtocol:
                 if handler:
                     handler()
             else:
-                self._send_buffer.append(char)
+                self.send_input_to_current_pane(char)
 
-    def _get_bindings(self):
+    def get_bindings(self):
         return {
-            b'\x01': lambda: self._send_buffer.append(b'\x01'),
+            b'\x01': lambda: self.send_input_to_current_pane(b'\x01'),
+        }
+
+
+class PyMuxInputProtocol(InputProtocol):
+    def get_bindings(self):
+        return {
+            b'\x01': lambda: self.send_input_to_current_pane(b'\x01'),
             b'n': self.session.focus_next_window,
             b'"': lambda: self.session.split_pane(vsplit=False),
             b'%': lambda: self.session.split_pane(vsplit=True),
             b'x': self.session.kill_current_pane,
- #           b'c': self.session.create_new_window,
+            b'c': self.session.create_new_window,
             b'h': lambda: self.session.resize_current_tile('L', 4),
             b'k': lambda: self.session.resize_current_tile('U', 4),
             b'l': lambda: self.session.resize_current_tile('R', 4),

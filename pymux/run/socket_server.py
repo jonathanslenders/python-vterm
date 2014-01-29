@@ -10,7 +10,7 @@ import json
 
 from pymux.session import PyMuxSession
 from pymux.amp_commands import WriteOutput, SendKeyStrokes, GetSessions, SetSize, DetachClient, AttachClient, GetSessionInfo, NewWindow
-from pymux.input import InputProtocol
+from pymux.input import PyMuxInputProtocol
 from pymux.renderer import AmpRenderer
 from pymux.log import logger
 
@@ -18,7 +18,7 @@ from pymux.log import logger
 loop = asyncio.get_event_loop()
 
 
-class SocketServerInputProtocol(InputProtocol):
+class SocketServerInputProtocol(PyMuxInputProtocol):
     def __init__(self, session, server_protocol):
         super().__init__(session)
         self.server_protocol = server_protocol

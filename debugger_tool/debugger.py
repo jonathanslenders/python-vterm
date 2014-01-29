@@ -31,6 +31,13 @@ import asyncio_amp
 
 loop = asyncio.get_event_loop()
 
+class PyMuxDebugInputProtocol(InputProtocol):
+    def get_bindings(self):
+        return {
+            b'\x01': lambda: self.send_input_to_current_pane(b'\x01'),
+            b'H': lambda: self.session.move_focus('L'),
+            b'L': lambda: self.session.move_focus('R'),
+        }
 
 
 class DebugProtocol(BaseProtocol):
@@ -77,7 +84,7 @@ def run():
 
             # Input transport/protocol
             input_transport, input_protocol = yield from loop.connect_read_pipe(
-                                lambda:InputProtocol(session), sys.stdin)
+                                lambda:PyMuxDebugInputProtocol(session), sys.stdin)
 
             # Wait for everything to finish
             yield from asyncio.gather(

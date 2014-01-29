@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 from asyncio.protocols import BaseProtocol
-from pymux.input import InputProtocol
+from pymux.input import PyMuxInputProtocol
 from pymux.log import logger
 from pymux.renderer import PipeRenderer
 from pymux.session import PyMuxSession
@@ -36,7 +36,7 @@ def run():
 
             # Input transport/protocol
             input_transport, input_protocol = yield from loop.connect_read_pipe(
-                                lambda:InputProtocol(session), sys.stdin)
+                                lambda:PyMuxInputProtocol(session), sys.stdin)
 
             yield from session.run()
 
