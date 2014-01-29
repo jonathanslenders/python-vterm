@@ -233,7 +233,6 @@ class ExecPane(Pane):
                                 lambda:SubProcessProtocol(self.write_output), self.shell_out)
 
             # Run process in executor, wait for that to finish.
-            #yield from loop.run_in_executor(self.pane_executor, self._run_fork)
             yield from self._run_fork()
 
             # Set finished.
