@@ -1,6 +1,6 @@
 import logging
 
-logger = logging.getLogger('pymux') # __package__)
+logger = logging.getLogger('libpymux') # __package__)
 
 
 _logfile = open('/tmp/pymux-log', 'w')

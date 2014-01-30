@@ -11,20 +11,19 @@
 import sys
 import docopt
 import pprint
-from pymux import __version__
 
-
-from pymux.run.socket_client import start_client
-from pymux.run.socket_server import start_server
-from pymux.run.standalone import start_standalone
-from pymux.run.utils import session_info, new_window
+#from pymux import __version__
+from pymux.socket_client import start_client
+from pymux.socket_server import start_server
+from pymux.standalone import start_standalone
+from pymux.utils import session_info, new_window
 
 
 def start(name=sys.argv[0]):
     """
     Entry point for a pymux client.
     """
-    a = docopt.docopt(__doc__.replace('pymux.py', name), version=__version__)
+    a = docopt.docopt(__doc__.replace('pymux.py', name))#, version=__version__)
 
     if a['run']:
         start_standalone()

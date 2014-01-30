@@ -2,10 +2,11 @@
 
 from asyncio.protocols import BaseProtocol
 
-from pymux.amp_commands import WriteOutput, SendKeyStrokes, GetSessions, SetSize, DetachClient, AttachClient
-from pymux.session import Session
-from pymux.std import raw_mode
-from pymux.utils import get_size, alternate_screen
+from .amp_commands import WriteOutput, SendKeyStrokes, GetSessions, SetSize, DetachClient, AttachClient
+
+from libpymux.session import Session
+from libpymux.std import raw_mode
+from libpymux.utils import get_size, alternate_screen
 
 import asyncio
 import asyncio_amp

@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
+from libpymux.log import logger
+from libpymux.std import raw_mode
+from libpymux.utils import alternate_screen, call_on_sigwinch
+from libpymux.renderer import PipeRenderer
+
 from asyncio.protocols import BaseProtocol
 from pymux.input import PyMuxInputProtocol
-from pymux.log import logger
-from pymux.renderer import PipeRenderer
 from pymux.session import PyMuxSession
-from pymux.std import raw_mode
-from pymux.utils import alternate_screen, call_on_sigwinch
 
 import asyncio
 import logging
